@@ -10,7 +10,9 @@ np.set_printoptions(precision=3, suppress=True, linewidth=200)
 
 def requiredQueues(man, W, L):
     '''
-    Returns the dictionaries of queues for the given W and L matrices
+    Returns the queues for the given W and L matrices
+    Inputs:
+    man is the multiprocessing manager
     W is the W matrix
     L is the L matrix
 
@@ -128,18 +130,24 @@ def subproblem(data, W, L, i, WQ, up_LQ, down_LQ, up_BQ, down_BQ, queue, gamma=0
     m = v.value.shape[0]
     v_temp = np.zeros(m)
     for itr in range(itrs):
-
+        print(f'Node {i} iteration {itr}')
         # Get data from upstream L queue
-        temp = sum([L[i,k]*queue[k,i].get() for k in up_LQ])
-        r.value = temp
+        if len(up_LQ) > 0:
+            print(f'Node {i} getting data from upstream L queue')
+            temp = sum([L[i,k]*queue[k,i].get() for k in up_LQ])
+            r.value = temp
+        else:
+            r.value = 0
 
         # Pull from the B queues, update r and v_temp
         for k in up_BQ:
+            print(f'Node {i} getting data from upstream B queue {k}')
             temp = queue[k,i].get()
             r.value += L[i,k]*temp
             v_temp += W[i,k]*temp
 
         # Solve the problem
+        print(f'Node {i} solving problem')
         prob.solve(verbose=False)
 
         # Log results
