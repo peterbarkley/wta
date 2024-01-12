@@ -8,6 +8,8 @@ def wta(q, V, W, integer=True, lasso=False, verbose=False):
         q: (n,m) array of survival probabilities
         V: (n,) array of target values
         W: (m,) array of weapon counts
+        integer: boolean, whether to solve the integer or continuous problem
+        lasso: boolean, whether to solve the lasso problem
     """
     if len(q.shape) == 1:
         n = q.shape[0]

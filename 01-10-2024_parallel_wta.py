@@ -106,7 +106,7 @@ def buildWTAProb(data):
     # Return the problem, variable, and parameters
     return prob, w, v, r
 
-def subproblem(data, W, L, i, WQ, up_LQ, down_LQ, up_BQ, down_BQ, queue, gamma=0.5, itrs=5, verbose=False):
+def subproblem(data, W, L, i, WQ, up_LQ, down_LQ, up_BQ, down_BQ, queue, gamma=0.5, itrs=15, verbose=False):
     '''
     Solves the subproblem for node i
     data contains arguments for the problem
@@ -127,27 +127,27 @@ def subproblem(data, W, L, i, WQ, up_LQ, down_LQ, up_BQ, down_BQ, queue, gamma=0
     logw = []
     logv = []
 
-    m = v.value.shape[0]
+    m = v.value.shape
     v_temp = np.zeros(m)
     for itr in range(itrs):
         print(f'Node {i} iteration {itr}')
         # Get data from upstream L queue
         if len(up_LQ) > 0:
-            print(f'Node {i} getting data from upstream L queue')
+            #print(f'Node {i} getting data from upstream L queue')
             temp = sum([L[i,k]*queue[k,i].get() for k in up_LQ])
             r.value = temp
         else:
-            r.value = 0
+            r.value = np.zeros(m)
 
         # Pull from the B queues, update r and v_temp
         for k in up_BQ:
-            print(f'Node {i} getting data from upstream B queue {k}')
+            #print(f'Node {i} getting data from upstream B queue {k}')
             temp = queue[k,i].get()
             r.value += L[i,k]*temp
             v_temp += W[i,k]*temp
 
         # Solve the problem
-        print(f'Node {i} solving problem')
+        #print(f'Node {i} solving problem')
         prob.solve(verbose=False)
 
         # Log results
@@ -167,7 +167,9 @@ def subproblem(data, W, L, i, WQ, up_LQ, down_LQ, up_BQ, down_BQ, queue, gamma=0
             queue[i,k].put(w.value)
 
         # Update v from all W queues
-        v.value = v.value - gamma*(W[i,i]*w.value + v_temp + sum([W[i,k]*queue[k,i].get() for k in WQ]))
+        v_temp += sum([W[i,k]*queue[k,i].get() for k in WQ])
+        v_temp += sum([W[i,k]*queue[k,i].get() for k in down_BQ])
+        v.value = v.value - gamma*(W[i,i]*w.value + v_temp)
         
         # Zero out v_temp without reallocating memory
         v_temp.fill(0)
@@ -177,6 +179,7 @@ def subproblem(data, W, L, i, WQ, up_LQ, down_LQ, up_BQ, down_BQ, queue, gamma=0
 
 
 if __name__ == '__main__':
+    #mp.freeze_support()
     # Problem data
     # Data
     n = 3
@@ -195,7 +198,7 @@ if __name__ == '__main__':
     WW = np.array([1, 1, 1, 1])
 
     # Reference values
-    #true_p, true_x = wta.wta(Q, V, WW, integer=False, verbose=False)
+    true_p, true_x = wta.wta(Q, V, WW, integer=False, verbose=False)
 
     # W and L for Malitsky-Tam
     M = np.array([
@@ -229,7 +232,7 @@ if __name__ == '__main__':
     with mp.Pool(processes=n) as p:
         params = [(data[i], W, L, i, WQ[i], up_LQ[i], down_LQ[i], up_BQ[i], down_BQ[i], Queue_Array) for i in range(n)]
         results = p.starmap(subproblem, params)
-        print(results[0]['x'])
+        print(results[0]['w'])
 
    
 
