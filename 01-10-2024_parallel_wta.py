@@ -251,15 +251,15 @@ def serialAlgorithm(n, m, Q, V, WW, W, L, node_tgts, num_nodes_per_tgt, itrs=100
             # if itr % 500 == 0:
             #     print("Iteration", itr, "Node", i)
             #     print(all_w[i].value)
-            e += np.linalg.norm(all_w[i].value - all_x[i].value)
+            #e += np.linalg.norm(all_w[i].value - all_x[i].value)
             all_x[i].value = all_w[i].value
         #log_e.append(e)
         for i in range(n):
             vk[i] -= gamma*sum(W[i,j]*all_x[j].value for j in range(n))
             all_v[i].value = vk[i]
         #log.append(V@get_final_surv_prob(Q, all_x[0].value))
-        if itr % 500 == 0:
-            print("v", vk)
+        # if itr % 500 == 0:
+        #     print("v", vk)
     
     print(V@wta.get_final_surv_prob(Q, all_w[0].value))
     return all_w[0].value
