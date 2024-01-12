@@ -3,8 +3,11 @@
 from collections import defaultdict
 import multiprocessing as mp
 import numpy as np
+import pandas as pd
 import cvxpy as cp
 import wta
+from microbench import MicroBench
+basic_bench = MicroBench()
 
 np.set_printoptions(precision=3, suppress=True, linewidth=200)
 
@@ -106,7 +109,7 @@ def buildWTAProb(data):
     # Return the problem, variable, and parameters
     return prob, w, v, r
 
-def subproblem(data, W, L, i, WQ, up_LQ, down_LQ, up_BQ, down_BQ, queue, gamma=0.5, itrs=15, verbose=False):
+def subproblem(data, W, L, i, WQ, up_LQ, down_LQ, up_BQ, down_BQ, queue, gamma=0.5, itrs=501, verbose=False):
     '''
     Solves the subproblem for node i
     data contains arguments for the problem
@@ -130,7 +133,7 @@ def subproblem(data, W, L, i, WQ, up_LQ, down_LQ, up_BQ, down_BQ, queue, gamma=0
     m = v.value.shape
     v_temp = np.zeros(m)
     for itr in range(itrs):
-        print(f'Node {i} iteration {itr}')
+        #print(f'Node {i} iteration {itr}')
         # Get data from upstream L queue
         if len(up_LQ) > 0:
             #print(f'Node {i} getting data from upstream L queue')
@@ -177,6 +180,89 @@ def subproblem(data, W, L, i, WQ, up_LQ, down_LQ, up_BQ, down_BQ, queue, gamma=0
     # Return the solution
     return {'logw':logw, 'w':w.value, 'logv':logv, 'v':v.value}
 
+@basic_bench
+def parallelAlgorithm(n, m, Q, V, WW, W, L, node_tgts, num_nodes_per_tgt, itrs=1001, gamma=0.5, verbose=False):
+    # Create the queues
+    man = mp.Manager()
+    Queue_Array, WQ, up_LQ, down_LQ, up_BQ, down_BQ = requiredQueues(man, W, L)
+
+    tgts = m[0]
+    data = []
+    for i in range(n):
+        q = np.ones(m)
+        q[node_tgts[i]] = Q[node_tgts[i]] # Only use the targets that are in the node
+        v = np.zeros(tgts)
+        v[node_tgts[i]] = V[node_tgts[i]] # Only use the targets that are in the node
+        v = v/num_nodes_per_tgt # Divide the value by the number of nodes that have the target
+        data.append({'QQ':q, 'VV':v, 'WW':WW, 'v0':np.zeros(m), 'Lii':L[i,i]})
+    # Run subproblems in parallel
+    with mp.Pool(processes=n) as p:
+        params = [(data[i], W, L, i, WQ[i], up_LQ[i], down_LQ[i], up_BQ[i], down_BQ[i], Queue_Array, 0.5, itrs) for i in range(n)]
+        results = p.starmap(subproblem, params)
+    w = results[0]['w']
+    print(V@wta.get_final_surv_prob(Q, w))
+    return w
+
+@basic_bench
+def serialAlgorithm(n, m, Q, V, WW, W, L, node_tgts, num_nodes_per_tgt, itrs=1001, gamma=0.5, verbose=False):
+    
+    tgts = m[0]
+    v0 = []
+    vk = []
+    log = []
+    log_e = []
+    for i in range(n):
+        vi = 1/tgts*np.array(WW)*np.ones(m)
+        v0.append(vi)
+        vk.append(vi.copy())
+
+    # Create variables/params/objs for the algorithm
+    probs = [] # List of problems for each node
+    all_x = [] # List of last x solutions for each node as params
+    all_v = [] # List of last v solutions for each node as params
+    all_w = []# List of variables for each node
+    for i in range(n):
+        w = cp.Variable(m)
+        all_w.append(w)
+        x = cp.Parameter(m)
+        x.value = np.zeros(m)
+        all_x.append(x)
+        v = cp.Parameter(m)
+        v.value = v0[i]
+        all_v.append(v)
+        y = v + sum(L[i,j]*all_x[j] for j in range(i)) + L[i,i]*w
+        qq = np.ones(m)
+        qq[node_tgts[i]] = Q[node_tgts[i]] # Only use the targets that are in the node
+        weighted_weapons = cp.multiply(w, np.log(qq)) # (tgts, wpns)
+        survival_probs = cp.exp(cp.sum(weighted_weapons, axis=1)) # (tgts,)
+        VV = np.zeros(tgts)
+        VV[node_tgts[i]] = V[node_tgts[i]]
+        VV = VV/num_nodes_per_tgt
+        obj = cp.Minimize(VV@survival_probs + .5*cp.sum_squares(w - y))
+        cons = [w >= 0, cp.sum(w, axis=0) <= WW]
+        probs.append(cp.Problem(obj, cons))
+
+    # Run the algorithm
+    for itr in range(itrs):
+        #print("Iteration", itr)
+        e = 0
+        for i in range(n):
+            probs[i].solve()
+            # if itr % 500 == 0:
+            #     print("Iteration", itr, "Node", i)
+            #     print(all_w[i].value)
+            e += np.linalg.norm(all_w[i].value - all_x[i].value)
+            all_x[i].value = all_w[i].value
+        #log_e.append(e)
+        for i in range(n):
+            vk[i] -= gamma*sum(W[i,j]*all_x[j].value for j in range(n))
+            all_v[i].value = vk[i]
+        #log.append(V@get_final_surv_prob(Q, all_x[0].value))
+        if itr % 500 == 0:
+            print("v", vk)
+    
+    print(V@wta.get_final_surv_prob(Q, all_w[0].value))
+    return all_w[0].value
 
 if __name__ == '__main__':
     #mp.freeze_support()
@@ -211,29 +297,14 @@ if __name__ == '__main__':
         [1, 0, 0],
         [1, 1, 0]])
 
-    # print(W)
-    # print(L)
-
-    # Create the queues
-    man = mp.Manager()
-    Queue_Array, WQ, up_LQ, down_LQ, up_BQ, down_BQ = requiredQueues(man, W, L)
-
     node_tgts = {0:[0, 1], 1:[1,2], 2:[0,2]}
     num_nodes_per_tgt = [2, 2, 2]
-    data = []
-    for i in range(n):
-        q = np.ones(m)
-        q[node_tgts[i]] = Q[node_tgts[i]] # Only use the targets that are in the node
-        v = np.zeros(tgts)
-        v[node_tgts[i]] = V[node_tgts[i]] # Only use the targets that are in the node
-        v = v/num_nodes_per_tgt # Divide the value by the number of nodes that have the target
-        data.append({'QQ':q, 'VV':v, 'WW':WW, 'v0':np.zeros(m), 'Lii':L[i,i]})
-    # Run subproblems in parallel
-    with mp.Pool(processes=n) as p:
-        params = [(data[i], W, L, i, WQ[i], up_LQ[i], down_LQ[i], up_BQ[i], down_BQ[i], Queue_Array) for i in range(n)]
-        results = p.starmap(subproblem, params)
-        print(results[0]['w'])
 
-   
+    parallelAlgorithm(n, m, Q, V, WW, W, L, node_tgts, num_nodes_per_tgt)    
+    serialAlgorithm(n, m, Q, V, WW, W, L, node_tgts, num_nodes_per_tgt)
 
-
+    results = pd.read_json(basic_bench.outfile.getvalue(), lines=True)
+    results['delta'] =   results['finish_time'] - results['start_time']
+    print(results.groupby('function_name').mean())
+    
+    
