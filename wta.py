@@ -38,9 +38,10 @@ def wta(q, V, W, integer=True, lasso=False, verbose=False):
     prob = cp.Problem(objective, cons)
     prob.solve(verbose=verbose)
     print(prob.status) # Optimal
-    print("The optimal value is", prob.value)
-    print("A solution x is")
-    print(x.value)
+    if verbose and prob.status == 'Optimal':
+        print("The optimal value is", prob.value)
+        print("A solution x is")
+        print(x.value)
 
     return prob.value, x.value
 
@@ -141,3 +142,16 @@ def get_ind_value(q, V, W):
         pv, x_i = wta(q_i, V, W[i])
         x[:,i] = x_i[:,0]
     return V@get_final_surv_prob(q, x), x
+
+def generate_random_problem(n=5, m=3):
+    """
+    Generate a random problem.
+    Inputs:
+        n: number of targets
+        m: number of weapon types
+    """
+    np.random.seed(1)
+    q = np.random.rand(n,m)*.8 + .1 # Survival probability
+    V = np.random.rand(n)*100 # Value of each target
+    W = np.random.randint(1,10,m) # Number of weapons of each type
+    return q, V, W

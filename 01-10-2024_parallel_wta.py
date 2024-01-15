@@ -132,15 +132,15 @@ def subproblem(data, W, L, i, WQ, up_LQ, down_LQ, up_BQ, down_BQ, queue, gamma=0
 
     m = v.value.shape
     v_temp = np.zeros(m)
+    z_n = np.zeros(m)
     for itr in range(itrs):
         #print(f'Node {i} iteration {itr}')
         # Get data from upstream L queue
         if len(up_LQ) > 0:
             #print(f'Node {i} getting data from upstream L queue')
-            temp = sum([L[i,k]*queue[k,i].get() for k in up_LQ])
-            r.value = temp
+            r.value = sum([L[i,k]*queue[k,i].get() for k in up_LQ])
         else:
-            r.value = np.zeros(m)
+            r.value = z_n
 
         # Pull from the B queues, update r and v_temp
         for k in up_BQ:
