@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <title>pydeck</title>
+        <script src="https://api.tiles.mapbox.com/mapbox-gl-js/v1.13.0/mapbox-gl.js"></script>
+        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap-theme.min.css" />
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.6.3/css/font-awesome.min.css" />
+    <script src='https://cdn.jsdelivr.net/npm/@deck.gl/jupyter-widget@~8.8.*/dist/index.js'></script>
+    <style>
+    body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+#deck-container {
+  width: 100vw;
+  height: 100vh;
+}
+
+#deck-container canvas {
+  z-index: 1;
+  background: none;
+}
+    </style>
+  </head>
+  <body>
+    <div id="deck-container">
+    </div>
+  </body>
+  <script>
+    const container = document.getElementById('deck-container');
+    const jsonInput = {
+  "initialViewState": {
+    "bearing": -45,
+    "latitude": 23.5833,
+    "longitude": 119.5833,
+    "pitch": 60,
+    "zoom": 10
+  },
+  "layers": [
+    {
+      "@@type": "IconLayer",
+      "autoHighlight": true,
+      "data": [
+        {
+          "icon_data": {
+            "height": 242,
+            "url": "https://raw.githubusercontent.com/peterbarkley/wta/main/images/ferry_right.png",
+            "width": 242
+          },
+          "lat": 23.5833,
+          "lon": 119.433,
+          "type": "ferry",
+          "value": 50
+        },
+        {
+          "icon_data": {
+            "height": 242,
+            "url": "https://raw.githubusercontent.com/peterbarkley/wta/main/images/warship_054A_down_right.png",
+            "width": 242
+          },
+          "lat": 23.683300000000003,
+          "lon": 119.533,
+          "type": "ship",
+          "value": 10
+        },
+        {
+          "icon_data": {
+            "height": 242,
+            "url": "https://raw.githubusercontent.com/peterbarkley/wta/main/images/warship_054A_down_right.png",
+            "width": 242
+          },
+          "lat": 23.4833,
+          "lon": 119.533,
+          "type": "ship",
+          "value": 10
+        },
+        {
+          "icon_data": {
+            "height": 242,
+            "url": "https://raw.githubusercontent.com/peterbarkley/wta/main/images/ferry_right.png",
+            "width": 242
+          },
+          "lat": 23.683300000000003,
+          "lon": 119.33300000000001,
+          "type": "ferry",
+          "value": 30
+        },
+        {
+          "icon_data": {
+            "height": 242,
+            "url": "https://raw.githubusercontent.com/peterbarkley/wta/main/images/ferry_right.png",
+            "width": 242
+          },
+          "lat": 23.4833,
+          "lon": 119.33300000000001,
+          "type": "ferry",
+          "value": 40
+        },
+        {
+          "icon_data": {
+            "height": 120,
+            "url": "https://raw.githubusercontent.com/peterbarkley/wta/main/images/sub_up_left.png",
+            "width": 120
+          },
+          "lat": 23.59,
+          "lon": 119.9533,
+          "type": "uuv",
+          "value": 0
+        },
+        {
+          "icon_data": {
+            "height": 120,
+            "url": "https://raw.githubusercontent.com/peterbarkley/wta/main/images/sub_up_left.png",
+            "width": 120
+          },
+          "lat": 23.69,
+          "lon": 120.0533,
+          "type": "uuv",
+          "value": 0
+        },
+        {
+          "icon_data": {
+            "height": 120,
+            "url": "https://raw.githubusercontent.com/peterbarkley/wta/main/images/ship_icon_up_left.png",
+            "width": 120
+          },
+          "lat": 23.69,
+          "lon": 119.8533,
+          "type": "usv",
+          "value": 0
+        },
+        {
+          "icon_data": {
+            "height": 120,
+            "url": "https://raw.githubusercontent.com/peterbarkley/wta/main/images/ship_icon_up_left.png",
+            "width": 120
+          },
+          "lat": 23.49,
+          "lon": 120.0533,
+          "type": "usv",
+          "value": 0
+        },
+        {
+          "icon_data": {
+            "height": 120,
+            "url": "https://raw.githubusercontent.com/peterbarkley/wta/main/images/drone_icon_up_left.png",
+            "width": 120
+          },
+          "lat": 23.49,
+          "lon": 119.8533,
+          "type": "uav",
+          "value": 0
+        },
+        {
+          "icon_data": {
+            "height": 120,
+            "url": "https://raw.githubusercontent.com/peterbarkley/wta/main/images/drone_icon_up_left.png",
+            "width": 120
+          },
+          "lat": 23.39,
+          "lon": 119.9533,
+          "type": "uav",
+          "value": 0
+        }
+      ],
+      "getIcon": "@@=icon_data",
+      "getPosition": "@@=[lon, lat]",
+      "getSize": 4,
+      "id": "b0f29091-7fcf-4f97-8e4d-834961165c25",
+      "pickable": true,
+      "sizeScale": 15
+    },
+    {
+      "@@type": "ArcLayer",
+      "autoHighlight": true,
+      "data": [
+        {
+          "lat": 23.59,
+          "lat2": 23.69,
+          "lon": 119.9533,
+          "lon2": 119.8533
+        },
+        {
+          "lat": 23.59,
+          "lat2": 23.49,
+          "lon": 119.9533,
+          "lon2": 120.0533
+        },
+        {
+          "lat": 23.59,
+          "lat2": 23.49,
+          "lon": 119.9533,
+          "lon2": 119.8533
+        },
+        {
+          "lat": 23.59,
+          "lat2": 23.39,
+          "lon": 119.9533,
+          "lon2": 119.9533
+        },
+        {
+          "lat": 23.69,
+          "lat2": 23.49,
+          "lon": 120.0533,
+          "lon2": 119.8533
+        },
+        {
+          "lat": 23.69,
+          "lat2": 23.39,
+          "lon": 120.0533,
+          "lon2": 119.9533
+        },
+        {
+          "lat": 23.69,
+          "lat2": 23.49,
+          "lon": 119.8533,
+          "lon2": 120.0533
+        },
+        {
+          "lat": 23.69,
+          "lat2": 23.49,
+          "lon": 119.8533,
+          "lon2": 119.8533
+        },
+        {
+          "lat": 23.69,
+          "lat2": 23.39,
+          "lon": 119.8533,
+          "lon2": 119.9533
+        },
+        {
+          "lat": 23.49,
+          "lat2": 23.49,
+          "lon": 120.0533,
+          "lon2": 119.8533
+        },
+        {
+          "lat": 23.49,
+          "lat2": 23.39,
+          "lon": 120.0533,
+          "lon2": 119.9533
+        },
+        {
+          "lat": 23.49,
+          "lat2": 23.39,
+          "lon": 119.8533,
+          "lon2": 119.9533
+        }
+      ],
+      "getSourceColor": [
+        255,
+        255,
+        255
+      ],
+      "getSourcePosition": "@@=[lon2, lat2]",
+      "getTargetColor": [
+        255,
+        255,
+        255
+      ],
+      "getTargetPosition": "@@=[lon, lat]",
+      "getWidth": 2,
+      "id": "69dc4e4b-e3ac-4f85-bb4e-38c11199351d",
+      "pickable": true
+    }
+  ],
+  "mapProvider": "carto",
+  "mapStyle": "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+  "views": [
+    {
+      "@@type": "MapView",
+      "controller": true
+    }
+  ]
+};
+    const tooltip = true;
+    const customLibraries = null;
+    const configuration = null;
+
+    const deckInstance = createDeck({
+            mapboxApiKey: 'pk.eyJ1IjoicGV0ZXJiYXJrbGV5IiwiYSI6ImNscTVxNDQyNzBrd2Eya3EwcDB3dml0ZHgifQ.WbzgR0Oz3AMpJf45cGKriA',
+                  container,
+      jsonInput,
+      tooltip,
+      customLibraries,
+      configuration
+    });
+
+  </script>
+</html>
