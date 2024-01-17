@@ -10,6 +10,9 @@ def wta(q, V, W, integer=True, lasso=False, verbose=False):
         W: (m,) array of weapon counts
         integer: boolean, whether to solve the integer or continuous problem
         lasso: boolean, whether to solve the lasso problem
+    Outputs:
+        probval: optimal value of the problem
+        x: (n,m) array of weapon assignments
     """
     if len(q.shape) == 1:
         n = q.shape[0]
