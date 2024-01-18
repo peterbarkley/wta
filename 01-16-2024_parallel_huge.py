@@ -297,10 +297,13 @@ def serialAlgorithm(n, m, Q, V, WW, W, L, node_tgts, num_nodes_per_tgt, itrs=100
     prob_val = V@wta.get_final_surv_prob(Q, w_val)
     return prob_val, w_val, log, log_e
 
-def graphResults(log, ref):
+def graphResults(logs, labels, ref):
     '''Graph the results'''
     import matplotlib.pyplot as plt
-    plt.plot(log, label='Parallel')
+    i=0
+    for log in logs:
+        plt.plot(log, label=labels[i])
+        i+=1
     
     # Horizontal line for reference
     plt.axhline(y=ref, color='red', linestyle='dashed')
@@ -310,6 +313,8 @@ def graphResults(log, ref):
     plt.ylabel('Value')
     plt.title('Parallel WTA convergence')
 
+    # Add legend
+    plt.legend()
     plt.show()
 
     # Save the figure
@@ -322,8 +327,8 @@ if __name__ == '__main__':
     # Data
     n = 4
     tgts = 120
-    wpns = 20
-    itrs = 500
+    wpns = 10
+    itrs = 200
     m = (tgts, wpns)
 
     # Survival probabilities
@@ -354,14 +359,19 @@ if __name__ == '__main__':
     alg_p, alg_x, results = parallelAlgorithm(n, m, Q, V, WW, W, L, node_tgts, num_nodes_per_tgt, itrs=itrs, verbose=True)   
     print("alg time", time()-t)
     print("direct time", true_time)
+    W, L = getMT(n)
+    t = time()
+    mt_p, mt_x, mt_results = parallelAlgorithm(n, m, Q, V, WW, W, L, node_tgts, num_nodes_per_tgt, itrs=itrs, verbose=True)
+    print("mt time", time()-t)
     # t = time() 
     # s_alg_p, s_alg_x, log, log_e = serialAlgorithm(n, m, Q, V, WW, W, L, node_tgts, num_nodes_per_tgt, itrs=itrs)
     # print("s alg time", time()-t)
     print("alg val", alg_p)
     # print("s alg val", s_alg_p)
     print("True val", true_p)
-    log = results[0]['log']
-    graphResults(log, true_p)
+    log_alg = results[0]['log']
+    log_mt = mt_results[0]['log']
+    graphResults([log_alg, log_mt], ["New Algorithm", "Malitsky Tam"], true_p)
     # print("alg x", alg_x)
     # print("s alg x", s_alg_x)
     # print("true x", true_x)
