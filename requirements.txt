@@ -1,0 +1,10 @@
+# Convex optimization
+cvxpy
+
+# Data
+numpy
+pandas
+matplotlib
+
+# Parallelization
+multiprocessing

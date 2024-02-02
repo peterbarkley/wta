@@ -1,12 +1,5 @@
-# Parallel WTA using MT algorithm over 3 nodes
-
-from collections import defaultdict
 import multiprocessing as mp
 import numpy as np
-import pandas as pd
-import cvxpy as cp
-import wta
-from time import time
 
 np.set_printoptions(precision=3, suppress=True, linewidth=200)
 
@@ -87,85 +80,6 @@ def requiredQueues(man, W, L):
 
     return Queue_Array, Comms_Data
 
-def buildWTAProb(data):
-    '''
-    Builds the WTA problem
-
-    Inputs:
-    data is a dictionary containing the following keys:
-    QQ is the survival probabilities for the targets in the node
-    VV is the value of the targets in the node
-    WW is the number of weapons for all weapons
-    v0 is the initial consensus parameter
-    Lii is the diagonal element of L (typically 0)
-
-    Returns:
-    prob is the problem
-    w is the variable
-    v is the consensus parameter
-    r is the resolvent parameter
-    '''
-    
-    QQ = data['QQ']
-    VV = data['VV']
-    WW = data['WW']
-    Lii = data['Lii']
-
-    # Get the number of targets and weapons
-    m = QQ.shape
-
-    # Create the variable
-    w = cp.Variable(m)
-
-    # Create the parameter
-    y = cp.Parameter(m) # resolvent parameter, sum of weighted previous resolvent outputs and v_i
-    
-    # Create the objective
-    weighted_weapons = cp.multiply(w, np.log(QQ)) # (tgts, wpns)
-    survival_probs = cp.exp(cp.sum(weighted_weapons, axis=1)) # (tgts,)
-    obj = cp.Minimize(VV@survival_probs + .5*cp.sum_squares((1-Lii)*w - y))
-
-    # Create the constraints
-    cons = [w >= 0, cp.sum(w, axis=0) <= WW]
-
-    # Create the problem 
-    prob = cp.Problem(obj, cons)
-
-    # Return the problem, variable, and parameters
-    return prob, w, y
-
-class resolvent:
-    '''Resolvent function'''
-    def __init__(self, data):
-        self.data = data
-        self.shape = data.shape
-
-    def __call__(self, x):
-        u = x - self.data
-        return max(abs(u)-1, 0)*np.sign(u) + self.data
-
-    def __repr__(self):
-        return "L1 norm resolvent"
-
-# WTA resolvent
-class wtaResolvent:
-    '''Resolvent function'''
-    def __init__(self, data):
-        self.data = data
-        prob, w, y = buildWTAProb(data)
-        self.prob = prob
-        self.w = w
-        self.y = y
-        self.shape = w.shape
-
-    def __call__(self, x):
-        self.y.value = x
-        self.prob.solve(verbose=False)
-        return self.w.value
-
-    def __repr__(self):
-        return "wtaResolvent"
-
 def subproblem(i, data, problem_builder, W, L, comms_data, queue, gamma=0.5, itrs=501, verbose=False):
     '''
     Solves the subproblem for node i
@@ -195,8 +109,6 @@ def subproblem(i, data, problem_builder, W, L, comms_data, queue, gamma=0.5, itr
         local_v = np.zeros(m)
     local_r = np.zeros(m)
 
-    # if i == 0:
-    #     log_val = []
     # Iterate over the problem
     for itr in range(itrs):
         if itr % 10 == 0 and verbose:
@@ -250,12 +162,9 @@ def subproblem(i, data, problem_builder, W, L, comms_data, queue, gamma=0.5, itr
     # Return the solution
     # if i == 0:
     #     return {'w':w_value, 'v':local_v, 'log':log_val}
+    if hasattr(resolvent, 'log'):
+        return {'w':w_value, 'v':local_v, 'log':resolvent.log}
     return {'w':w_value, 'v':local_v}
-
-
-def fullValue(d, w):
-    '''Get the full value of the problem'''
-    return d['V']@wta.get_final_surv_prob(d['Q'], w)
 
 def parallelAlgorithm(n, data, resolvents, W, L, itrs=1001, gamma=0.5, verbose=False):
     # Create the queues
@@ -337,51 +246,6 @@ def serialAlgorithm(n, m, Q, V, WW, W, L, node_tgts, num_nodes_per_tgt, itrs=100
     prob_val = V@wta.get_final_surv_prob(Q, w_val)
     return prob_val, w_val, log, log_e
 
-def graphResults(logs, labels, ref):
-    '''Graph the results'''
-    import matplotlib.pyplot as plt
-    i=0
-    for log in logs:
-        plt.plot(log, label=labels[i])
-        i+=1
-    
-    # Horizontal line for reference
-    plt.axhline(y=ref, color='red', linestyle='dashed')
-    
-    # Add labels
-    plt.xlabel('Iteration')
-    plt.ylabel('Value')
-    plt.title('Parallel WTA convergence')
-
-    # Add legend
-    plt.legend()
-    #plt.show()
-
-    # Save the figure
-    timestamp = time()
-    plt.savefig('parallel_wta'+str(timestamp)+'.png')
-
-def wrapper(name):
-    if name == '__main__':
-        main_routine()
-
-def generateSplitData(n, tgts, wpns, node_tgts, num_nodes_per_tgt, L):
-    '''Generate the data for the splitting'''
-    Q, V, WW = wta.generate_random_problem(tgts, wpns)
-    m = (tgts, wpns)
-    data = []
-    for i in range(n):
-        q = np.ones(m)
-        q[node_tgts[i]] = Q[node_tgts[i]] # Only use the targets that are in the node
-        v = np.zeros(tgts)
-        v[node_tgts[i]] = V[node_tgts[i]] # Only use the targets that are in the node
-        v = v/num_nodes_per_tgt # Divide the value by the number of nodes that have the target
-        v0 = 1/tgts*np.array(WW)*np.ones(m) # Initial consensus parameter - equal number of weapons per tgt
-        data.append({'QQ':q, 'VV':v, 'WW':WW, 'v0':v0, 'Lii':L[i,i], 'Q':Q, 'V':V})
-
-    data.append({'Q':Q, 'V':V, 'WW':WW}) # Add the data for the full problem
-    return data
-
 def distributeFunctions(num_nodes, num_functions, num_nodes_per_function=1):
     '''Distribute the functions to the nodes'''
     '''Can send the same function to the same node multiple times'''
@@ -409,60 +273,31 @@ def distributeFunctionsLinear(num_nodes, num_functions, num_nodes_per_function=1
     
     return funcs_per_node
 
+def solve(n, data, resolvents, W, L, itrs=1001, gamma=0.5, parallel=True, verbose=False):
+    '''Solve the problem with a given W and L matrix
+    Inputs:
+    n is the number of nodes
+    data is a list of dictionaries containing the problem data
+    resolvents is a list of resolvent functions
+    W is the W matrix
+    L is the L matrix
+    itrs is the number of iterations
+    gamma is the consensus parameter
+    parallel is a boolean for parallel or serial
+    verbose is a boolean for verbose output
+    Outputs:
+    alg_x is the solution
+    results is a dictionary of the results of the algorithm for each node
+    '''
 
-def main_routine():
-    # Problem data
-    n = 4
-    tgts = 120
-    wpns = 10
-    itrs = 20
+    if parallel:
+        alg_x, results = parallelAlgorithm(n, data, resolvents, W, L, itrs=itrs, verbose=verbose)
+    else:
+        alg_x, results = serialAlgorithm(n, data, resolvents, W, L, itrs=itrs, verbose=verbose)
 
-    # Survival probabilities
-    Q, V, WW = wta.generate_random_problem(tgts, wpns)
+    return alg_x, results
 
-    # Reference values
-    t = time()
-    true_p, true_x = wta.wta(Q, V, WW, integer=False, verbose=False)
-    true_time = time() - t
-    # W and L for Malitsky-Tam
-    #W, L = getMT(n)
-
-    # W and L for 4 node example
-    L = np.array([[0, 0, 0, 0], [0, 0, 0, 0], [1.5, 0.5, 0, 0], [0.5,1.5,0,0]])
-    W = np.array([[1, 0, -1, 0], [0, 2, -0.5, -1.5], [-1, -0.5, 1.67218, -0.17218], [0,-1.5,-0.17218,1.67218]])
-
-    # Generate splitting
-    num_nodes_per_function = 2
-    node_tgts = distributeFunctionsLinear(n, tgts, num_nodes_per_function)
-    num_nodes_per_tgt = num_nodes_per_function*np.ones(tgts) # Assumes even splitting
-
-    # Generate the data
-    data = generateSplitData(n, tgts, wpns, node_tgts, num_nodes_per_tgt, L)
-    resolvents = [wtaResolvent]*n
-    t = time()
-    alg_x, results = parallelAlgorithm(n, data, resolvents, W, L, itrs=itrs, verbose=True)   
-    print("alg time", time()-t)
-    print("direct time", true_time)
-    
-    alg_p = fullValue(data[-1], alg_x)
-    print("alg val", alg_p)
-    print("True val", true_p)
-
-    # Test L1 resolvent
-    ldata = np.array([1, 2, 3, 4])
-    lres = [resolvent]*n
-    lx, lresults = parallelAlgorithm(n, ldata, lres, W, L, itrs=itrs, verbose=True)
-    print("lx", lx)
-    print("lresults", lresults)
-    # log_alg = results[0]['log']
-    # log_mt = mt_results[0]['log']
-    # graphResults([log_alg, log_mt], ["New Algorithm", "Malitsky Tam"], true_p)
-    
-
-    # # Save the alg_x as a json file
-    # import json
-    # with open('alg_x.json', 'w') as f:
-    #     json.dump(alg_x.tolist(), f)
-
-
-    # 
+def solveMT(n, data, resolvents, itrs=1001, gamma=0.5, parallel=True, verbose=False):
+    # Solve the problem with the Malitsky-Tam W and L matrices
+    W, L = getMT(n)
+    return solve(n, data, resolvents, W, L, itrs=itrs, gamma=gamma, parallel=parallel, verbose=verbose)
