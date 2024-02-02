@@ -6,8 +6,10 @@ The code is demonstrated on a weapon target assignment (WTA) problem. The WTA pr
 ## Installation
 pip install -r requirements.txt
 
+I also recommend installing MOSEK for faster optimization. You can get a free academic license from the [MOSEK website] (https://www.mosek.com/products/academic-licenses/). 
+
 ## Usage - basic L1 norm and Huber mean examples
 python test_main.py
 
-## Usage - WTA example
-python test_wta.py
+## Usage - WTA example (requires MOSEK as default solver)
+python test_wta.py 
