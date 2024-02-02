@@ -5,6 +5,3 @@ cvxpy
 numpy
 pandas
 matplotlib
-
-# Parallelization
-multiprocessing
