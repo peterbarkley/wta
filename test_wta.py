@@ -80,9 +80,22 @@ class wtaResolvent:
     def __repr__(self):
         return "wtaResolvent"
 
+
 def fullValue(d, w):
     '''Get the full value of the problem'''
     return d['V']@wta.get_final_surv_prob(d['Q'], w)
+
+class fVal:
+    '''Class to hold the full value function'''
+    def __init__(self, data):
+        self.V = data['V']
+        self.Q = data['Q']
+
+    def __call__(self, x):
+        return self.V@wta.get_final_surv_prob(self.Q, x)
+
+    def __repr__(self):
+        return "Full value function"
 
 def generateSplitData(n, tgts, wpns, node_tgts, num_nodes_per_tgt, L):
     '''Generate the data for the splitting'''
@@ -185,11 +198,12 @@ if __name__ == "__main__":
 
     # Generate the data
     data = generateSplitData(n, tgts, wpns, node_tgts, num_nodes_per_tgt, L)
-
+    data.append({'Q':Q, 'V':V, 'WW':WW})
+    
     # Serial WTA
     resolvents = [wtaResolvent]*n
     t = time()
-    alg_x, results = oars.solve(n, data, resolvents, W, L, itrs=itrs, parallel=False, verbose=True)   
+    alg_x, results = oars.solve(n, data, resolvents, W, L, itrs=itrs, vartol=1e-5, parallel=False, verbose=True)   
     logs = [results[i]['log'] for i in range(n)]
     fig = getDataGantt(logs, "Serial WTA")
     #fig.show()
@@ -205,7 +219,7 @@ if __name__ == "__main__":
     # Parallel WTA
     resolvents = [wtaResolvent]*n
     t = time()
-    alg_x, results = oars.solve(n, data, resolvents, W, L, itrs=itrs, parallel=True, verbose=True)   
+    alg_x, results = oars.solve(n, data, resolvents, W, L, itrs=itrs, objtol=1e-5, fval=fullValue, parallel=True, verbose=True)   
     print("alg time", time()-t)
     
     alg_p = fullValue(data[-1], alg_x)

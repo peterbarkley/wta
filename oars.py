@@ -81,7 +81,7 @@ def requiredQueues(man, W, L):
 
     return Queue_Array, Comms_Data
 
-def subproblem(i, data, problem_builder, W, L, comms_data, queue, gamma=0.5, itrs=501, verbose=False):
+def subproblem(i, data, problem_builder, W, L, comms_data, queue, gamma=0.5, itrs=501, terminate=None, verbose=False):
     '''
     Solves the subproblem for node i
     Inputs:
@@ -111,7 +111,12 @@ def subproblem(i, data, problem_builder, W, L, comms_data, queue, gamma=0.5, itr
     local_r = np.zeros(m)
 
     # Iterate over the problem
-    for itr in range(itrs):
+    itr = 0
+    while itr < itrs:
+        if terminate is not None and terminate.value != 0:
+            if terminate.value < itr:
+                terminate.value = itr + 1
+            itrs = terminate.value
         if verbose and itr % 10 == 0:
             print(f'Node {i} iteration {itr}')
 
@@ -127,6 +132,11 @@ def subproblem(i, data, problem_builder, W, L, comms_data, queue, gamma=0.5, itr
 
         # Solve the problem
         w_value = resolvent(local_v + local_r)
+
+        # Terminate if needed
+        if i==0 and terminate is not None:
+            queue['terminate'].put(w_value)
+            
 
         # Put data in downstream queues
         for k in comms_data['down_LQ']:
@@ -149,12 +159,14 @@ def subproblem(i, data, problem_builder, W, L, comms_data, queue, gamma=0.5, itr
         for k in comms_data['down_BQ']:
             v_temp += W[i,k]*queue[k,i].get()
         #v_temp += sum([W[i,k]*queue[k,i].get() for k in comms_data['down_BQ']])
-        local_v = local_v - gamma*(W[i,i]*w_value + v_temp)
+        
+
+        local_v = local_v - gamma*(W[i,i]*w_value+v_temp)
         
         # Zero out v_temp without reallocating memory
         v_temp.fill(0)
         local_r.fill(0)
-
+        itr += 1
         # Log the value -- needs to be done in another process
         # if i == 0:
         #     prob_val = fullValue(data, w_value)
@@ -167,26 +179,75 @@ def subproblem(i, data, problem_builder, W, L, comms_data, queue, gamma=0.5, itr
         return {'w':w_value, 'v':local_v, 'log':resolvent.log}
     return {'w':w_value, 'v':local_v}
 
-def parallelAlgorithm(n, data, resolvents, W, L, itrs=1001, gamma=0.5, verbose=False):
+def evaluate(terminateQueue, terminate, vartol, objtol, data, fval, itrs, verbose):
+    '''Evaluate the termination conditions'''
+    x = terminateQueue.get()
+    varcounter = 0
+    objcounter = 0
+    itr = 0
+    itrs -= 10
+    while itr < itrs:
+        prev_x = x
+        x = terminateQueue.get()        
+        if vartol is not None:
+            if np.linalg.norm(x-prev_x) < vartol:
+                varcounter += 1
+                if varcounter >= 10:
+                    terminate.value = itr + 10
+                    if verbose:
+                        print('Converged on vartol')
+                    break
+            else:
+                varcounter = 0
+        if objtol is not None:
+            if abs(fval(data, x)-fval(data, prev_x)) < objtol:
+                objcounter += 1
+                if objcounter >= 10:
+                    terminate.value = itr + 10
+                    if verbose:
+                        print('Converged on objtol')
+                    break
+            else:
+                objcounter = 0
+        itr += 1
+        
+
+def parallelAlgorithm(n, data, resolvents, W, L, itrs=1001, gamma=0.5, vartol=None, objtol=None, fval=None, verbose=False):
     # Create the queues
     man = mp.Manager()
     Queue_Array, Comms_Data = requiredQueues(man, W, L)
+    if vartol is not None or objtol is not None:
+        terminate = man.Value('i',0) #man.Event()
+        Queue_Array['terminate'] = man.Queue()
+        # Create evaluation process
+        if objtol is not None:
+            d = data[n]
+        else:
+            d = None
+        evalProcess = mp.Process(target=evaluate, args=(Queue_Array['terminate'], terminate, vartol, objtol, d, fval, itrs, verbose))
+        evalProcess.start()
+    else:
+        terminate = None
 
     # Run subproblems in parallel
     if verbose:
         print('Starting Parallel Algorithm')
         t = time()
     with mp.Pool(processes=n) as p:
-        params = [(i, data[i], resolvents[i], W, L, Comms_Data[i], Queue_Array, 0.5, itrs, verbose) for i in range(n)]
+        params = [(i, data[i], resolvents[i], W, L, Comms_Data[i], Queue_Array, 0.5, itrs, terminate, verbose) for i in range(n)]
         results = p.starmap(subproblem, params)
     if verbose:
         print('Parallel Algorithm Loop Time:', time()-t)
+
+    # Join the evaluation process
+    if terminate is not None:        
+        evalProcess.join()
     # Get the final value
     w = sum(results[i]['w'] for i in range(n))/n
 
     return w, results
 
-def serialAlgorithm(n, data, resolvents, W, L, itrs=1001, gamma=0.5, verbose=False):
+def serialAlgorithm(n, data, resolvents, W, L, itrs=1001, gamma=0.5, vartol=None, objtol=None, fval=None, verbose=False):
     
     # Initialize the resolvents and variables
     all_x = []
@@ -204,7 +265,13 @@ def serialAlgorithm(n, data, resolvents, W, L, itrs=1001, gamma=0.5, verbose=Fal
     # Run the algorithm
     if verbose:
         print('Starting Serial Algorithm')
-        t = time()
+        start_time = time()
+    checkperiod = 10
+    if vartol is not None:
+        tracker = 0
+    if objtol is not None:
+        objtracker = 0
+        lastVal = fval(data[n], all_x[0])
     for itr in range(itrs):
         if verbose and itr % 10 == 0:
             print(f'Iteration {itr}')
@@ -214,10 +281,36 @@ def serialAlgorithm(n, data, resolvents, W, L, itrs=1001, gamma=0.5, verbose=Fal
             y = all_v[i] + sum(L[i,j]*all_x[j] for j in range(i))
             all_x[i] = resolvent(y)
 
-        for i in range(n):            
-            all_v[i] = all_v[i] - gamma*sum(W[i,j]*all_x[j] for j in range(n))
+        for i in range(n):     
+            t = sum(W[i,j]*all_x[j] for j in range(n))       
+            all_v[i] = all_v[i] - gamma*t
+        
+        if vartol is not None and itr%checkperiod == 0:
+            if np.linalg.norm(t) < vartol:
+                tracker += 1
+                checkperiod = 1
+                if tracker >= n:
+                    print('Converged')
+                    break
+            else:
+                tracker = 0
+                checkperiod = 10
+
+        if objtol is not None and itr%checkperiod == 0 and fval is not None:
+            newVal = fval(data[n], all_x[0])
+            if abs(newVal-lastVal) < objtol:
+                objtracker += 1
+                checkperiod = 1
+                if objtracker >= n:
+                    print('Converged')
+                    break
+            else:
+                objtracker = 0
+                checkperiod = 10
+            lastVal = newVal
+            
     if verbose:
-        print('Serial Algorithm Loop Time:', time()-t)
+        print('Serial Algorithm Loop Time:', time()-start_time)
     x = sum(all_x)/n
     # Build results list
     results = []
@@ -255,7 +348,7 @@ def distributeFunctionsLinear(num_nodes, num_functions, num_nodes_per_function=1
     
     return funcs_per_node
 
-def solve(n, data, resolvents, W, L, itrs=1001, gamma=0.5, parallel=True, verbose=False):
+def solve(n, data, resolvents, W, L, itrs=1001, gamma=0.5, vartol=None, objtol=None, fval=None, parallel=True, verbose=False):
     '''Solve the problem with a given W and L matrix
     Inputs:
     n is the number of nodes
@@ -273,13 +366,13 @@ def solve(n, data, resolvents, W, L, itrs=1001, gamma=0.5, parallel=True, verbos
     '''
 
     if parallel:
-        alg_x, results = parallelAlgorithm(n, data, resolvents, W, L, itrs=itrs, verbose=verbose)
+        alg_x, results = parallelAlgorithm(n, data, resolvents, W, L, itrs=itrs, vartol=vartol, objtol=objtol, fval=fval, verbose=verbose)
     else:
-        alg_x, results = serialAlgorithm(n, data, resolvents, W, L, itrs=itrs, verbose=verbose)
+        alg_x, results = serialAlgorithm(n, data, resolvents, W, L, itrs=itrs, vartol=vartol, objtol=objtol, fval=fval, verbose=verbose)
 
     return alg_x, results
 
-def solveMT(n, data, resolvents, itrs=1001, gamma=0.5, parallel=True, verbose=False):
+def solveMT(n, data, resolvents, itrs=1001, gamma=0.5, vartol=None, objtol=None, fval=None, parallel=True, verbose=False):
     # Solve the problem with the Malitsky-Tam W and L matrices
     W, L = getMT(n)
-    return solve(n, data, resolvents, W, L, itrs=itrs, gamma=gamma, parallel=parallel, verbose=verbose)
+    return solve(n, data, resolvents, W, L, itrs=itrs, gamma=gamma, vartol=vartol, objtol=objtol, fval=fval, parallel=parallel, verbose=verbose)

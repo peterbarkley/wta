@@ -15,7 +15,27 @@ class resolvent:
     def __repr__(self):
         return "L1 norm resolvent"
         
+def fullValue(data, x):
+    '''Full value norm'''
+    v = 0
+    for d in data:
+        v += np.abs(x - d)
+    return v
 
+class fullValueNorm:
+    '''Full value norm'''
+    def __init__(self, data):
+        self.data = data
+        
+
+    def __call__(self, x):
+        v = 0
+        for d in self.data:
+            v += np.abs(x - d)
+        return v
+
+    def __repr__(self):
+        return "Full value norm"
 class demo_resolvent:
     '''Demo Resolvent function'''
     def __init__(self, data):
@@ -40,9 +60,11 @@ class demo_resolvent:
 if __name__ == "__main__":
     # Test L1 resolvent
     n = 4
-    ldata = np.array([1, 2, 3, 4])
+    ldata = [np.array(i) for i in range(n)]
+    ldata.append(ldata.copy())
     lres = [resolvent]*n
-    lx, lresults = oars.solveMT(n, ldata, lres, itrs=50, verbose=True)
+    #fVal = fullValueNorm(ldata)
+    lx, lresults = oars.solveMT(n, ldata, lres, itrs=50, objtol=1e-5, fval=fullValue, parallel=True, verbose=True)
     print("lx", lx)
     print("lresults", lresults)
 
@@ -50,6 +72,6 @@ if __name__ == "__main__":
     n = 4
     ddata = np.array([1, 2, 3, 40])
     dres = [demo_resolvent]*n
-    dx, dresults = oars.solveMT(n, ddata, dres, itrs=50, verbose=True)
+    dx, dresults = oars.solveMT(n, ddata, dres, itrs=50, vartol=1e-2, verbose=True)
     print("dx", dx)
     print("dresults", dresults)
