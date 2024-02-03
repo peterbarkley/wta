@@ -5,6 +5,8 @@ import cvxpy as cp
 from time import time
 import pandas as pd
 from collections import defaultdict
+import plotly.express as px
+import json
 
 def buildWTAProb(data):
     '''
@@ -66,10 +68,13 @@ class wtaResolvent:
         self.log = []
 
     def __call__(self, x):
+        t = time()
         self.y.value = x
         self.prob.solve(verbose=False)
+        st = time()
+        self.log.append((t,st))
         # You can implement logging here
-        self.log.append(fullValue(self.data, self.w.value))
+        #self.log.append(fullValue(self.data, self.w.value))
         return self.w.value
 
     def __repr__(self):
@@ -120,13 +125,46 @@ def graphResults(logs, labels, ref):
     timestamp = time()
     plt.savefig('parallel_wta'+str(timestamp)+'.png')
 
+def getDataGantt(logs, title):
+    n = len(logs)
+    #tt, s, x = getCycleTime(t, l, L, W)
+    dflist = []
+
+    j = 0
+    for log in logs: # Node logs
+        i = 0
+        for start,stop in log: # Operations
+            if j==0 and i==0:
+                offset = start
+            start = start - offset
+            stop = stop - offset
+            #start = s[i,j]
+            #stop = start + t[j]
+            dflist.append(dict(Task="Iter %s" % i, Start=start, Finish=stop, Resource="Node %s" % j))
+            i += 1
+        j += 1
+    df = pd.DataFrame(dflist)
+    df['delta'] = df['Finish'] - df['Start']
+    # Export df to csv
+    df.to_csv(title+'.csv')
+
+    fig = px.timeline(df, x_start="Start", x_end="Finish", y="Resource", color="Task")
+    fig.update_yaxes(autorange="reversed") 
+
+    fig.layout.xaxis.type = 'linear'
+    for d in fig.data:
+        filt = df['Task'] == d.name
+        d.x = df[filt]['delta'].tolist()
+
+    fig.update_layout(title_text=title)
+    return fig
 
 if __name__ == "__main__":
     # Problem data
     n = 4
     tgts = 120
     wpns = 10
-    itrs = 100
+    itrs = 50
 
     # Survival probabilities
     Q, V, WW = wta.generate_random_problem(tgts, wpns)
@@ -147,9 +185,16 @@ if __name__ == "__main__":
 
     # Generate the data
     data = generateSplitData(n, tgts, wpns, node_tgts, num_nodes_per_tgt, L)
+
+    # Serial WTA
     resolvents = [wtaResolvent]*n
     t = time()
-    alg_x, results = oars.solve(n, data, resolvents, W, L, itrs=itrs, verbose=True)   
+    alg_x, results = oars.solve(n, data, resolvents, W, L, itrs=itrs, parallel=False, verbose=True)   
+    logs = [results[i]['log'] for i in range(n)]
+    fig = getDataGantt(logs, "Serial WTA")
+    #fig.show()
+    fig.write_html('serial_wta_gantt'+str(time())+'.html')
+
     print("alg time", time()-t)
     print("direct time", true_time)
     
@@ -157,19 +202,32 @@ if __name__ == "__main__":
     print("alg val", alg_p)
     print("True val", true_p)
 
-    log_alg = results[0]['log']
-    
-    # Malitsky-Tam
+    # Parallel WTA
+    resolvents = [wtaResolvent]*n
     t = time()
-    mt_resolvents = [wtaResolvent]*n
-    mt_x, mt_results = oars.solveMT(n, data, mt_resolvents, itrs=itrs, verbose=True)
-    print("mt time", time()-t)
-    print("mt val", fullValue(data[-1], mt_x))
-    log_mt = mt_results[0]['log']
-    graphResults([log_alg, log_mt], ["New Algorithm", "Malitsky Tam"], true_p)
+    alg_x, results = oars.solve(n, data, resolvents, W, L, itrs=itrs, parallel=True, verbose=True)   
+    print("alg time", time()-t)
+    
+    alg_p = fullValue(data[-1], alg_x)
+    print("alg val", alg_p)
+    print("True val", true_p)
+    logs = [results[i]['log'] for i in range(n)]
+    fig = getDataGantt(logs, "Parallel WTA")
+    #fig.show()
+    fig.write_html('parallel_wta_gantt'+str(time())+'.html')
+
+    # Malitsky-Tam
+    # log_alg = results[0]['log']
+    # t = time()
+    # mt_resolvents = [wtaResolvent]*n
+    # mt_x, mt_results = oars.solveMT(n, data, mt_resolvents, itrs=itrs, verbose=True)
+    # print("mt time", time()-t)
+    # print("mt val", fullValue(data[-1], mt_x))
+    # log_mt = mt_results[0]['log']
+    # graphResults([log_alg, log_mt], ["New Algorithm", "Malitsky Tam"], true_p)
     
 
     # # Save the alg_x as a json file
-    # import json
+    
     # with open('alg_x.json', 'w') as f:
     #     json.dump(alg_x.tolist(), f)

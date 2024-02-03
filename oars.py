@@ -1,5 +1,6 @@
 import multiprocessing as mp
 import numpy as np
+from time import time
 
 np.set_printoptions(precision=3, suppress=True, linewidth=200)
 
@@ -111,14 +112,13 @@ def subproblem(i, data, problem_builder, W, L, comms_data, queue, gamma=0.5, itr
 
     # Iterate over the problem
     for itr in range(itrs):
-        if itr % 10 == 0 and verbose:
+        if verbose and itr % 10 == 0:
             print(f'Node {i} iteration {itr}')
 
         # Get data from upstream L queue
         for k in comms_data['up_LQ']:
-            temp = queue[k,i].get()
-            local_r += L[i,k]*temp
-
+            local_r += L[i,k]*queue[k,i].get()
+            
         # Pull from the B queues, update r and v_temp
         for k in comms_data['up_BQ']:
             temp = queue[k,i].get()
@@ -126,8 +126,7 @@ def subproblem(i, data, problem_builder, W, L, comms_data, queue, gamma=0.5, itr
             v_temp += W[i,k]*temp
 
         # Solve the problem
-        y_value = local_v + local_r
-        w_value = resolvent(y_value)
+        w_value = resolvent(local_v + local_r)
 
         # Put data in downstream queues
         for k in comms_data['down_LQ']:
@@ -143,11 +142,13 @@ def subproblem(i, data, problem_builder, W, L, comms_data, queue, gamma=0.5, itr
 
         # Update v from all W queues
         for k in comms_data['WQ']:
-            temp = queue[k,i].get()            
-            v_temp += W[i,k]*temp
+            #temp = queue[k,i].get()            
+            v_temp += W[i,k]*queue[k,i].get() 
             
         # Update v from all B queues
-        v_temp += sum([W[i,k]*queue[k,i].get() for k in comms_data['down_BQ']])
+        for k in comms_data['down_BQ']:
+            v_temp += W[i,k]*queue[k,i].get()
+        #v_temp += sum([W[i,k]*queue[k,i].get() for k in comms_data['down_BQ']])
         local_v = local_v - gamma*(W[i,i]*w_value + v_temp)
         
         # Zero out v_temp without reallocating memory
@@ -172,79 +173,60 @@ def parallelAlgorithm(n, data, resolvents, W, L, itrs=1001, gamma=0.5, verbose=F
     Queue_Array, Comms_Data = requiredQueues(man, W, L)
 
     # Run subproblems in parallel
+    if verbose:
+        print('Starting Parallel Algorithm')
+        t = time()
     with mp.Pool(processes=n) as p:
         params = [(i, data[i], resolvents[i], W, L, Comms_Data[i], Queue_Array, 0.5, itrs, verbose) for i in range(n)]
         results = p.starmap(subproblem, params)
-
+    if verbose:
+        print('Parallel Algorithm Loop Time:', time()-t)
     # Get the final value
     w = sum(results[i]['w'] for i in range(n))/n
 
     return w, results
 
-def serialAlgorithm(n, m, Q, V, WW, W, L, node_tgts, num_nodes_per_tgt, itrs=1001, gamma=0.5, verbose=False):
-    tgts = m[0]
-    v0 = []
-    vk = []
-    log = []
-    log_e = []
-    #log_w = {}
+def serialAlgorithm(n, data, resolvents, W, L, itrs=1001, gamma=0.5, verbose=False):
+    
+    # Initialize the resolvents and variables
+    all_x = []
+    all_v = []
     for i in range(n):
-        vi = 1/tgts*np.array(WW)*np.ones(m)
-        v0.append(vi)
-        vk.append(vi.copy())
-        #log_w[i] = []
-
-    # Create variables/params/objs for the algorithm
-    probs = [] # List of problems for each node
-    all_x = [] # List of last x solutions for each node as params
-    all_v = [] # List of last v solutions for each node as params
-    all_w = []# List of variables for each node
-    #all_y = [] # List of y values for each node
-    for i in range(n):
-        w = cp.Variable(m)
-        all_w.append(w)
-        x = cp.Parameter(m)
-        x.value = np.zeros(m)
+        resolvents[i] = resolvents[i](data[i])
+        x = np.zeros(resolvents[i].shape)
         all_x.append(x)
-        v = cp.Parameter(m)
-        v.value = v0[i]
+        if isinstance(data[i], dict) and 'v0' in data[i]:
+            v = data[i]['v0']
+        else:
+            v = np.zeros(resolvents[i].shape)
         all_v.append(v)
-        y = v + sum(L[i,j]*all_x[j] for j in range(i)) + L[i,i]*w
-        #all_y.append(y)
-        qq = np.ones(m)
-        qq[node_tgts[i]] = Q[node_tgts[i]] # Only use the targets that are in the node
-        weighted_weapons = cp.multiply(w, np.log(qq)) # (tgts, wpns)
-        survival_probs = cp.exp(cp.sum(weighted_weapons, axis=1)) # (tgts,)
-        VV = np.zeros(tgts)
-        VV[node_tgts[i]] = V[node_tgts[i]]
-        VV = VV/num_nodes_per_tgt
-        obj = cp.Minimize(VV@survival_probs + .5*cp.sum_squares(w - y))
-        cons = [w >= 0, cp.sum(w, axis=0) <= WW]
-        probs.append(cp.Problem(obj, cons))
 
     # Run the algorithm
+    if verbose:
+        print('Starting Serial Algorithm')
+        t = time()
     for itr in range(itrs):
-        #print("Iteration", itr)
-        e = 0
+        if verbose and itr % 10 == 0:
+            print(f'Iteration {itr}')
+
         for i in range(n):
-            # if i == 2:print("y", i, itr, all_y[i].value)
-            probs[i].solve()
-            #log_w[i].append(all_w[i].value)
-            # if itr % 500 == 0:
-            #     print("Iteration", itr, "Node", i)
-            #print("s", i, itr, all_w[i].value)
-            e += np.linalg.norm(all_w[i].value - all_x[i].value)
-            all_x[i].value = all_w[i].value
-        log_e.append(e)
-        for i in range(n):
-            vk[i] -= gamma*sum(W[i,j]*all_x[j].value for j in range(n))
-            all_v[i].value = vk[i]
-        #log.append(V@get_final_surv_prob(Q, all_x[0].value))
-        # if itr % 500 == 0:
-        # print("v", itr, vk)
-    w_val = sum(all_w[i].value for i in range(n))/n
-    prob_val = V@wta.get_final_surv_prob(Q, w_val)
-    return prob_val, w_val, log, log_e
+            resolvent = resolvents[i]
+            y = all_v[i] + sum(L[i,j]*all_x[j] for j in range(i))
+            all_x[i] = resolvent(y)
+
+        for i in range(n):            
+            all_v[i] = all_v[i] - gamma*sum(W[i,j]*all_x[j] for j in range(n))
+    if verbose:
+        print('Serial Algorithm Loop Time:', time()-t)
+    x = sum(all_x)/n
+    # Build results list
+    results = []
+    for i in range(n):
+        if hasattr(resolvents[i], 'log'):
+            results.append({'w':all_x[i], 'v':all_v[i], 'log':resolvents[i].log})
+        else:
+            results.append({'w':all_x[i], 'v':all_v[i]})
+    return x, results
 
 def distributeFunctions(num_nodes, num_functions, num_nodes_per_function=1):
     '''Distribute the functions to the nodes'''

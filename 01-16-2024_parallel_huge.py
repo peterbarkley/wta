@@ -315,7 +315,7 @@ def graphResults(logs, labels, ref):
 
     # Add legend
     plt.legend()
-    plt.show()
+    #plt.show()
 
     # Save the figure
     timestamp = time()
@@ -328,7 +328,7 @@ if __name__ == '__main__':
     n = 4
     tgts = 120
     wpns = 10
-    itrs = 200
+    itrs = 100
     m = (tgts, wpns)
 
     # Survival probabilities
