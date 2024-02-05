@@ -128,6 +128,16 @@ def get_final_surv_prob(q, x):
     """
     return np.prod(np.power(q, x), axis=1)
 
+def fullValue(q, V, x):
+    """
+    Get the total value of the problem.
+    Inputs:
+        V: (n,) array of target values
+        q: (n,m) array of survival probabilities
+        x: (n,m) array of weapon assignments
+    """
+    return V@get_final_surv_prob(q, x)
+
 def get_ind_value(q, V, W):
     """
     Get the total value if each platform solves independently.
@@ -144,7 +154,7 @@ def get_ind_value(q, V, W):
         q_i = q[:,i]
         pv, x_i = wta(q_i, V, W[i])
         x[:,i] = x_i[:,0]
-    return V@get_final_surv_prob(q, x), x
+    return fullValue(V, q, x), x
 
 def generate_random_problem(n=5, m=3):
     """
@@ -157,4 +167,21 @@ def generate_random_problem(n=5, m=3):
     q = np.random.rand(n,m)*.8 + .1 # Survival probability
     V = np.random.rand(n)*100 # Value of each target
     W = np.random.randint(1,10,m) # Number of weapons of each type
+    return q, V, W
+
+def generate_random_banded(n=5, m=3, band=2):
+    """
+    Generate a random problem with a banded survival probability matrix.
+    Inputs:
+        n: number of targets
+        m: number of weapon types
+    """
+    np.random.seed(1)
+    q = np.random.rand(n,m)*.8 + .1 # Survival probability
+    V = np.random.rand(n)*100 # Value of each target
+    W = np.random.randint(1,10,m) # Number of weapons of each type
+
+    # Make the survival probability matrix banded
+    q = np.tril(q, m-band-1)
+    q = np.triu(q, -(n-band-1))
     return q, V, W

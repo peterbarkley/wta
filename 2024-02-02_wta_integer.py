@@ -55,7 +55,7 @@ def buildWTAProb(data):
     # Return the problem, variable, and parameters
     return prob, w, y
    
-def betterProx(i, q_row, y, Vj, verbose=False):
+def dynamicProx(i, q_row, y, Vj, verbose=False):
     pk_i = 1 - q_row
     tgts, wpns = y.shape
     x = np.zeros(y.shape)
@@ -85,44 +85,57 @@ def betterProx(i, q_row, y, Vj, verbose=False):
     full_val_i = (full_val/q_row)*pk_i
     if verbose:print("full_val", full_val_i)
     if verbose:print("cost_diff", cost_diff)
-    remove = set(filter(lambda j: full_val_i[j] > cost_diff[j], remaining))
-    remaining = remaining.difference(remove)
-    if verbose:print("remove", remove)
+    high_q = set(filter(lambda j: full_val_i[j] > cost_diff[j], remaining))
+    remaining = remaining.difference(high_q)
+    if verbose:print("high_q", high_q)
     if verbose:print("remaining", remaining)
 
     # Set x[i,j] = 1 if j in remove
     # These weapons have such a high q value that they are worth the cost even if all weapons are used
-    for j in remove:
+    for j in high_q:
         x[i,j] = 1
 
     # We can get the lowest possible base value now with these weapon values set
     if verbose:print(q_row, i, x[i,:], np.power(q_row, x[i,:]), Vj)
     base_value = Vj*np.prod(np.power(q_row, x[i,:]))
     if verbose:print(base_value)
-   
+
+    # Find promising weapons - those with a base value higher than the cost if they are the only one added
     base_value_i = base_value*pk_i
     if verbose:print("base_value_i", base_value_i)
     bv = {}
     val = {}
-    queue = deque()
     promising = []
-    promising_set = set()
-    remains = {}
-    prohibited = defaultdict(list)
-
-    # Find promising weapons - those with a base value higher than the cost if they are the only one added
     for j in remaining:
         v = base_value*pk_i[j] - cost_diff[j]
         if v > 0:
-            bv[j] = base_value*q_row[j]
-            val[j] = v
-            promising.append((j))
-            promising_set.add(j)
+            bv[tuple([j])] = base_value*q_row[j]
+            val[tuple([j])] = v
+            promising.append(j)            
         else:
             x[max_index[j],j] = 1
     if verbose:print("promising", promising)
     if verbose:print("vals", val)
     if verbose:print("bv", bv)
+    if promising:
+        prom_tuples = [tuple([j]) for j in promising]
+        #p = dynProgExp(bv, val, q_row, pk_i, cost_diff, max_index, prom_tuples, verbose=verbose)
+        p = singleWTA(q_row, base_value, cost_diff, promising, verbose=verbose)
+        for j in promising:
+            if j in p:
+                x[i,j] = 1
+            else:
+                x[max_index[j],j] = 1
+    return x
+    
+def dynProgExp(bv, val, q_row, pk_i, cost_diff, max_index, promising, verbose=False):
+    
+    queue = deque()
+    
+    remains = {}
+    prohibited = defaultdict(list)
+
+    promising_set = set(promising)
     for j in promising:
         remains[j] = promising_set.difference({j})
     queue.extend(promising)
@@ -158,7 +171,7 @@ def betterProx(i, q_row, y, Vj, verbose=False):
             tail.append(j)
         for p in new_queue:
             if verbose:print(p)
-            r = remaining.difference(p).difference({j for j in prohibited[i] for i in p})
+            r = promising_set.difference(p).difference({j for i in p for j in prohibited[i]})
             if r:
                 queue.append(p)
                 remains[tuple(p)] = r
@@ -176,14 +189,40 @@ def betterProx(i, q_row, y, Vj, verbose=False):
     if verbose:print("p", p)
     # Set x[i,j] = 1 if j in p
     if verbose:print("last remaining", remaining)
-    for j in remaining:
-        if (type(p) is tuple and j in p) or j == p:
-            x[i,j] = 1
-        else:
-            x[max_index[j],j] = 1
-
-    return x
     
+
+    return tuple(p)
+
+def singleWTA(q, V, cost_diff, promising, verbose=False):
+    '''
+    Solve the weapon-target assignment problem for a single target
+    Inputs:
+    q: (m,) array of survival probabilities
+    V: target value (float)
+    cost_diff: (m,) array of the difference between the cost of each weapon and the base value
+    promising: list of promising weapons
+    Outputs:
+    p: list of weapons to use
+    '''
+    m = len(promising)
+    small_q = q[promising]
+    #print("small_q", small_q)
+    small_c = cost_diff[promising]
+    #print("small_c", small_c)
+    #print("V", V)
+    x = cp.Variable(m, boolean=True)
+    ww = x@cp.log(small_q)
+    obj = cp.Minimize(V*cp.exp(ww) + x@small_c)
+    prob = cp.Problem(obj)
+    prob.solve()
+    if verbose:print("prob status", prob.status)
+    if verbose:print("prob value", prob.value)
+    if verbose:print("prob x", x.value)
+    used = [i for i in range(m) if x.value[i] > 0.5]
+    #print(used)
+    return np.array(promising)[used]
+
+
 class wtaBProx:
 
     def __init__(self, data):
@@ -195,7 +234,7 @@ class wtaBProx:
 
     def __call__(self, y):
         t = time()
-        x = betterProx(self.i, self.q, y, self.v)
+        x = dynamicProx(self.i, self.q, y, self.v)
         return x
 
     def __repr__(self):
@@ -324,7 +363,7 @@ if __name__ == "__main__":
     # Problem data
     n = 4
     tgts = 4
-    wpns = 10
+    wpns = 150
     itrs = 200
 
     # Survival probabilities
@@ -356,14 +395,27 @@ if __name__ == "__main__":
     print("true val")
     print(true_x) 
     print("alg time", time()-t)
-    print("alg x")
-    print(alg_x)
-    for i in range(n):
-        print("node", i, "x")
-        print(results[i]['w'])
+    # print("alg x")
+    # print(alg_x)
+    # for i in range(n):
+    #     print("node", i, "x")
+    #     print(results[i]['w'])
     alg_p = fullValue(data[-1], alg_x)
     print("alg val", alg_p)
     print("True val", true_p)
+
+    # Generate random solution for comparison
+    # Generate random solution
+    y = np.random.rand(4, wpns)
+    # Set the max value in each column to 1, the rest to 0
+    x = np.zeros(y.shape)
+    max_index = np.argmax(y, axis=0)
+    for j in range(wpns):
+        x[max_index[j],j] = 1
+
+    # Get the value of the solution
+    z = wta.fullValue(Q, V, x)
+    print(z)
     # logs = [results[i]['log'] for i in range(n)]
     # fig = getDataGantt(logs, "Parallel WTA")
     # #fig.show()
