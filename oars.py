@@ -104,7 +104,9 @@ def subproblem(i, data, problem_builder, W, L, comms_data, queue, gamma=0.5, itr
     resolvent = problem_builder(data)
     m = resolvent.shape
     v_temp = np.zeros(m)
-    if isinstance(data, dict) and 'v0' in data:
+    if hasattr(resolvent, 'v0'):
+        local_v = resolvent.v0
+    elif isinstance(data, dict) and 'v0' in data:
         local_v = data['v0']
     else:
         local_v = np.zeros(m)
@@ -333,8 +335,18 @@ def distributeFunctions(num_nodes, num_functions, num_nodes_per_function=1):
     return np.array_split(functs, num_nodes)
 
 def distributeFunctionsLinear(num_nodes, num_functions, num_nodes_per_function=1):
-    '''Distribute the functions to the nodes'''
-    '''Assumes even splitting'''
+    '''Distribute the functions to the nodes
+    Assumes even splitting
+    Inputs:
+    num_nodes is the number of nodes
+    num_functions is the number of functions
+    num_nodes_per_function is the number of nodes per function
+
+    Returns:
+    funcs_per_node is a list of length num_nodes
+    Each entry is a list of the functions assigned to that node
+    '''
+
     from itertools import cycle, islice
     functs = list(range(num_functions))
     stride = num_functions*num_nodes_per_function//num_nodes

@@ -1,7 +1,7 @@
 import cvxpy as cp
 import numpy as np
 
-def wta(q, V, W, integer=True, lasso=False, verbose=False):
+def wta(q, V, W, integer=True, lasso=False, verbose=False, **kwargs):
     """
     Solve the weapon-target assignment problem.
     Inputs:
@@ -39,7 +39,7 @@ def wta(q, V, W, integer=True, lasso=False, verbose=False):
 
     # Solve
     prob = cp.Problem(objective, cons)
-    prob.solve(verbose=verbose)
+    prob.solve(**kwargs)
     print(prob.status) # Optimal
     if verbose and prob.status == 'Optimal':
         print("The optimal value is", prob.value)
@@ -138,7 +138,7 @@ def fullValue(q, V, x):
     """
     return V@get_final_surv_prob(q, x)
 
-def get_ind_value(q, V, W):
+def get_ind_value(q, V, W, **kwargs):
     """
     Get the total value if each platform solves independently.
     Inputs:
@@ -152,9 +152,9 @@ def get_ind_value(q, V, W):
     for i in range(m):
         # Solve the WTA problem for platform i
         q_i = q[:,i]
-        pv, x_i = wta(q_i, V, W[i])
+        pv, x_i = wta(q_i, V, W[i], **kwargs)
         x[:,i] = x_i[:,0]
-    return fullValue(V, q, x), x
+    return fullValue(q, V, x), x
 
 def generate_random_problem(n=5, m=3):
     """
