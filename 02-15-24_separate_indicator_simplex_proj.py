@@ -202,28 +202,39 @@ class wtaBProx:
     def __repr__(self):
         return "WTA Better Proximal Operator"
 
+def lambertw_prox(q, bv, y, v=1, verbose=False):
+
+    d = q@y
+    z = d - lambertw(bv*np.exp(d))
+    lam = np.exp(z)
+    x = y - lam*v*q
+    return x
 # WTA resolvent
 class wtaResolvent:
     '''Resolvent function'''
     def __init__(self, data):
         self.data = data
         self.v0 = data['v0']
-        prob, w, y = buildWTAProb(data)
-        self.prob = prob
-        self.w = w
-        self.y = y
+        # prob, w, y = buildWTAProb(data)
+        # self.prob = prob
+        # self.w = w
+        # self.y = y
+        self.q = np.log(self.data['QQ'])
+        self.b = self.q@self.q
+        self.bv = self.b*self.data['VV']
         self.shape = self.data['Q'].shape
         self.log = []
 
     def __call__(self, x):
         t = time()
-        self.y.value = x[self.data['s'],:]
-        self.prob.solve(verbose=False, ignore_dpp=True)
-        x[self.data['s'],:] = self.w.value
-        st = time()
+        # self.y.value = x[self.data['s'],:]
+        # self.prob.solve(verbose=False, ignore_dpp=True)
+        # x[self.data['s'],:] = self.w.value
+        # st = time()
+        y = lambertw_prox(self.q, self.bv, x, v=self.data['VV'])
         #self.log.append((t,st))
         # You can implement logging here
-        self.log.append(fullValue(self.data, proj_full(x)))
+        self.log.append(fullValue(self.data, proj_full(y)))
         return x
 
     def __repr__(self):
