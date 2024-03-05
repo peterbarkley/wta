@@ -23,7 +23,7 @@ class square_resolvent:
         self.y = cp.Parameter(self.shape) # resolvent parameter
         # self.f would be the function to minimize
         self.f = cp.sum_squares(self.x - self.data)
-        self.obj = cp.Minimize(self.f + cp.sum_squares((1-self.lii)*self.x - self.y))
+        self.obj = cp.Minimize(self.f + 0.5*cp.sum_squares((1-self.lii)*self.x - self.y))
         self.prob = cp.Problem(self.obj)
 
     def __call__(self, x):
@@ -39,12 +39,12 @@ class square_resolvent:
 if __name__ == "__main__":
     # Test L1 resolvent
     n = 4
-    data = [{'x': 1, 'lii': 0}, {'x': 2, 'lii': 0}, {'x': 3, 'lii': 0.45}, {'x': 40, 'lii': 0.45}]
+    data = [{'x': -2, 'lii': 0}, {'x': -1, 'lii': 0}, {'x': 1, 'lii': 0.25}, {'x': 2, 'lii': 0.25}]
     print(np.mean([d['x'] for d in data]))
     resolvents = [square_resolvent]*n
     #fVal = fullValueNorm(ldata)
-    L = np.array([[0,0,0,0], [1,0,0,0], [0,1,0.45,0], [1,0,0.1,0.45]])
-    W = np.array([[1,-1,0,0], [-1,2,-1,0], [0,-1,1.1,-0.1], [0,0,-0.1,0.1]])
+    L = np.array([[0,0,0,0], [1,0,0,0], [0,1,0.25,0], [1,0,0.25,0.25]])
+    W = np.array([[1,-1,0,0], [-1,2,-1,0], [0,-1,1.5,-0.5], [0,0,-0.5,0.5]])
     
     print(theoretical_min([d['x'] for d in data], np.diag(L)))
     itrs = 1000
@@ -53,7 +53,7 @@ if __name__ == "__main__":
 
     # vs MT
     resolvents = [square_resolvent]*n
-    data = [{'x': 1, 'lii': 0}, {'x': 2, 'lii': 0}, {'x': 3, 'lii': 0}, {'x': 40, 'lii': 0}]    
+    data = [{'x': -2, 'lii': 0}, {'x': -1, 'lii': 0}, {'x': 1, 'lii': 0}, {'x': 2, 'lii': 0}]    
     mt_x, mt_results = oars.solveMT(n, data, resolvents, itrs=itrs, vartol=1e-6, parallel=False, verbose=True)
     print("mt_x", mt_x)
     # Test demo resolvent

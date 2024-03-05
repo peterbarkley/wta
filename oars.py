@@ -6,7 +6,12 @@ np.set_printoptions(precision=3, suppress=True, linewidth=200)
 
 def getMT(n):
     '''Get Malitsky-Tam values for W and L
-    n: number of agents'''
+    n: number of agents
+    
+    Returns:
+    W: W matrix n x n numpy array
+    L: L matrix n x n numpy array
+    '''
     W = np.zeros((n,n))
     W[0,0] = 1
     W[0,1] = -1
@@ -23,6 +28,26 @@ def getMT(n):
         L[i+1,i] = 1
     L[n-1,0] = 1
     return W, L
+
+
+def getMaxConnect(n):
+    '''
+    Return L, W for maximum connectivity
+    '''
+    v = 2/(n-1)
+    W = -v*np.ones((n,n))
+    # Set diagonal of W to 2
+    for i in range(n):
+        W[i,i] = 2
+    
+    L = np.zeros((n,n))
+    # Set lower triangle of L to v
+    for i in range(n):
+        for j in range(i):
+            L[i,j] = v
+
+    return L, W
+
 
 def requiredQueues(man, W, L):
     '''
@@ -273,7 +298,7 @@ def serialAlgorithm(n, data, resolvents, W, L, itrs=1001, gamma=0.5, vartol=None
         tracker = 0
     if objtol is not None:
         objtracker = 0
-        lastVal = fval(data[n], all_x[0])
+        lastVal = fval(data[n], all_x[n-1])
     for itr in range(itrs):
         if verbose and itr % 10 == 0:
             print(f'Iteration {itr}')
@@ -292,7 +317,7 @@ def serialAlgorithm(n, data, resolvents, W, L, itrs=1001, gamma=0.5, vartol=None
                 tracker += 1
                 checkperiod = 1
                 if tracker >= n:
-                    print('Converged')
+                    print('Converged on variable value, iteration', itr)
                     break
             else:
                 tracker = 0
@@ -304,7 +329,7 @@ def serialAlgorithm(n, data, resolvents, W, L, itrs=1001, gamma=0.5, vartol=None
                 objtracker += 1
                 checkperiod = 1
                 if objtracker >= n:
-                    print('Converged')
+                    print('Converged in objective value, iteration', itr)
                     break
             else:
                 objtracker = 0
@@ -321,6 +346,7 @@ def serialAlgorithm(n, data, resolvents, W, L, itrs=1001, gamma=0.5, vartol=None
             results.append({'w':all_x[i], 'v':all_v[i], 'log':resolvents[i].log})
         else:
             results.append({'w':all_x[i], 'v':all_v[i]})
+            print('results', i, 'w', all_x[i], 'v', all_v[i])
     return x, results
 
 def distributeFunctions(num_nodes, num_functions, num_nodes_per_function=1):
