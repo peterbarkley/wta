@@ -67,7 +67,11 @@ class wtaResolvent:
         self.shape = w.shape
         self.log = []
 
+    # Not implemented
     def __call__(self, x):
+        return None
+
+    def prox(self, x):
         t = time()
         self.y.value = x
         self.prob.solve(verbose=False)
@@ -84,18 +88,6 @@ class wtaResolvent:
 def fullValue(d, w):
     '''Get the full value of the problem'''
     return d['V']@wta.get_final_surv_prob(d['Q'], w)
-
-class fVal:
-    '''Class to hold the full value function'''
-    def __init__(self, data):
-        self.V = data['V']
-        self.Q = data['Q']
-
-    def __call__(self, x):
-        return self.V@wta.get_final_surv_prob(self.Q, x)
-
-    def __repr__(self):
-        return "Full value function"
 
 def generateSplitData(n, tgts, wpns, node_tgts, num_nodes_per_tgt, L):
     '''Generate the data for the splitting'''
