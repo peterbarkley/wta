@@ -1,8 +1,78 @@
 import multiprocessing as mp
 import numpy as np
+import cvxpy as cvx
 from time import time
 
 np.set_printoptions(precision=3, suppress=True, linewidth=200)
+
+def getParallel(n):
+    """Return the W and L matrices for parallel computation
+    n: number of agents
+
+    Returns:
+    W: W matrix n x n numpy array
+    L: L matrix n x n numpy array
+    """
+    fixed = {(i, j): 0 for i in range(n) for j in range(n) if j<i and (i < n//2 or j > n//2)}
+    W, L = getMaxFiedlerSum(n, fixed_Z=fixed)
+    return W, L
+
+def getMaxCut(n):
+    """Return the W and L matrices for parallel computation
+    n: number of agents
+
+    Returns:
+    W: W matrix n x n numpy array
+    L: L matrix n x n numpy array
+    """
+    fixed = {(n-1, 0): 0 }
+    W, L = getMaxFiedlerSum(n, fixed_Z=fixed)
+    return W, L
+ 
+def getMaxFiedlerSum(n, fixed_Z=None, fixed_W=None, vz=1.0, vw=1.0, verbose=False):
+    
+    # Variables
+    cw = cvx.Variable(1, pos=True)  # Fiedler value for W
+    cz = cvx.Variable(1, pos=True)  # Fiedler value for Z
+    Z = cvx.Variable((n,n), symmetric=True)
+    W = cvx.Variable((n,n), PSD=True)
+
+    # Constraints
+    c = 1-np.cos(np.pi/n)
+    D = Z - W
+    cons = [D >> 0, # Z - W is PSD
+            cvx.lambda_sum_smallest(W, 2) >= cw, # Fiedler value constraint
+            cw >= c, # Fiedler value constraint
+            cvx.lambda_sum_smallest(Z, 2) >= cz, # Fiedler value constraint
+            cz >= c, # Fiedler value constraint
+            cvx.sum(W, axis=1) == 0, # W is row stochastic
+            cvx.sum(Z) == 0] # Z is sums to zero
+    cons += [Z[i,i] == 2 for i in range(n)] # Z diagonal entries equal 2
+
+    # Set fixed L and W values
+    if fixed_Z is not None:
+        cons += [Z[idx] == val for idx,val in fixed_Z.items()]
+    if fixed_W is not None:
+        cons += [W[idx] == val for idx,val in fixed_W.items()]
+    obj_fun = vw*cw + vz*cz
+
+    # Solve
+    obj = cvx.Maximize(obj_fun)
+    prob = cvx.Problem(obj, cons)
+    prob.solve()
+
+    if verbose:
+        print("status:", prob.status)
+        print("optimal value", prob.value)
+        print("optimal cw", cw.value)
+        print("optimal cz", cz.value)
+        print("optimal W")
+        print(W.value)
+        print("optimal Z")
+        print(Z.value)
+    if prob.status == 'infeasible':
+        return None, None
+    return W.value, -np.tril(Z.value,-1)
 
 def getMT(n):
     '''Get Malitsky-Tam values for W and L
@@ -29,10 +99,9 @@ def getMT(n):
     L[n-1,0] = 1
     return W, L
 
-
 def getMaxConnect(n):
     '''
-    Return L, W for maximum connectivity
+    Return W, L for maximum connectivity
     '''
     v = 2/(n-1)
     W = -v*np.ones((n,n))
@@ -46,8 +115,7 @@ def getMaxConnect(n):
         for j in range(i):
             L[i,j] = v
 
-    return L, W
-
+    return W, L
 
 def requiredQueues(man, W, L):
     '''
@@ -144,7 +212,7 @@ def subproblem(i, data, problem_builder, W, L, comms_data, queue, gamma=0.5, itr
             if terminate.value < itr:
                 terminate.value = itr + 1
             itrs = terminate.value
-        if verbose and itr % 10 == 0:
+        if verbose and itr % 1000 == 999:
             print(f'Node {i} iteration {itr}')
 
         # Get data from upstream L queue
@@ -158,7 +226,7 @@ def subproblem(i, data, problem_builder, W, L, comms_data, queue, gamma=0.5, itr
             v_temp += W[i,k]*temp
 
         # Solve the problem
-        w_value = resolvent(local_v + local_r)
+        w_value = resolvent.prox(local_v + local_r)
 
         # Terminate if needed
         if i==0 and terminate is not None:
@@ -207,7 +275,21 @@ def subproblem(i, data, problem_builder, W, L, comms_data, queue, gamma=0.5, itr
     return {'w':w_value, 'v':local_v}
 
 def evaluate(terminateQueue, terminate, vartol, objtol, data, fval, itrs, verbose):
-    '''Evaluate the termination conditions'''
+    """Evaluate the termination conditions and set the terminate value if needed
+    The terminate value is set a number of iterations ahead of the convergence iteration
+    
+    Inputs:
+    terminateQueue is the queue for termination
+    terminate is the multiprocessing value for termination
+    vartol is the variable tolerance
+    objtol is the objective tolerance
+    data is the data for the objective function
+    fval is the objective function
+    itrs is the number of iterations
+    verbose is a boolean for verbose output
+
+
+    """
     x = terminateQueue.get()
     varcounter = 0
     objcounter = 0
@@ -222,7 +304,7 @@ def evaluate(terminateQueue, terminate, vartol, objtol, data, fval, itrs, verbos
                 if varcounter >= 10:
                     terminate.value = itr + 10
                     if verbose:
-                        print('Converged on vartol')
+                        print('Converged on vartol on iteration', itr)
                     break
             else:
                 varcounter = 0
@@ -238,7 +320,6 @@ def evaluate(terminateQueue, terminate, vartol, objtol, data, fval, itrs, verbos
                 objcounter = 0
         itr += 1
         
-
 def parallelAlgorithm(n, data, resolvents, W, L, itrs=1001, gamma=0.5, vartol=None, objtol=None, fval=None, verbose=False):
     # Create the queues
     man = mp.Manager()
@@ -258,20 +339,22 @@ def parallelAlgorithm(n, data, resolvents, W, L, itrs=1001, gamma=0.5, vartol=No
 
     # Run subproblems in parallel
     if verbose:
-        print('Starting Parallel Algorithm')
+        #print('Starting Parallel Algorithm')
         t = time()
     with mp.Pool(processes=n) as p:
         params = [(i, data[i], resolvents[i], W, L, Comms_Data[i], Queue_Array, 0.5, itrs, terminate, verbose) for i in range(n)]
         results = p.starmap(subproblem, params)
     if verbose:
-        print('Parallel Algorithm Loop Time:', time()-t)
+        alg_time = time()-t
+        print('Parallel Algorithm Loop Time:', alg_time)
 
     # Join the evaluation process
     if terminate is not None:        
         evalProcess.join()
     # Get the final value
     w = sum(results[i]['w'] for i in range(n))/n
-
+    if verbose:
+        results[0]['alg_time'] = alg_time
     return w, results
 
 def serialAlgorithm(n, data, resolvents, W, L, itrs=1001, gamma=0.5, vartol=None, objtol=None, fval=None, verbose=False):
@@ -281,12 +364,14 @@ def serialAlgorithm(n, data, resolvents, W, L, itrs=1001, gamma=0.5, vartol=None
     all_v = []
     for i in range(n):
         resolvents[i] = resolvents[i](data[i])
-        x = np.zeros(resolvents[i].shape)
+        if i == 0:
+            m = resolvents[0].shape
+        x = np.zeros(m)
         all_x.append(x)
         if isinstance(data[i], dict) and 'v0' in data[i]:
             v = data[i]['v0']
         else:
-            v = np.zeros(resolvents[i].shape)
+            v = np.zeros(m)
         all_v.append(v)
 
     # Run the algorithm
@@ -306,14 +391,14 @@ def serialAlgorithm(n, data, resolvents, W, L, itrs=1001, gamma=0.5, vartol=None
         for i in range(n):
             resolvent = resolvents[i]
             y = all_v[i] + sum(L[i,j]*all_x[j] for j in range(i))
-            all_x[i] = resolvent(y)
+            all_x[i] = resolvent.prox(y)
 
         for i in range(n):     
-            t = sum(W[i,j]*all_x[j] for j in range(n))       
-            all_v[i] = all_v[i] - gamma*t
+            wx = sum(W[i,j]*all_x[j] for j in range(n))       
+            all_v[i] = all_v[i] - gamma*wx
         
         if vartol is not None and itr%checkperiod == 0:
-            if np.linalg.norm(t) < vartol:
+            if np.linalg.norm(wx) < vartol:
                 tracker += 1
                 checkperiod = 1
                 if tracker >= n:
@@ -323,7 +408,7 @@ def serialAlgorithm(n, data, resolvents, W, L, itrs=1001, gamma=0.5, vartol=None
                 tracker = 0
                 checkperiod = 10
 
-        if objtol is not None and itr%checkperiod == 0 and fval is not None:
+        if objtol is not None and itr%checkperiod == 0:
             newVal = fval(data[n], all_x[0])
             if abs(newVal-lastVal) < objtol:
                 objtracker += 1
@@ -346,6 +431,7 @@ def serialAlgorithm(n, data, resolvents, W, L, itrs=1001, gamma=0.5, vartol=None
             results.append({'w':all_x[i], 'v':all_v[i], 'log':resolvents[i].log})
         else:
             results.append({'w':all_x[i], 'v':all_v[i]})
+        if verbose:
             print('results', i, 'w', all_x[i], 'v', all_v[i])
     return x, results
 
@@ -386,7 +472,7 @@ def distributeFunctionsLinear(num_nodes, num_functions, num_nodes_per_function=1
     
     return funcs_per_node
 
-def solve(n, data, resolvents, W, L, itrs=1001, gamma=0.5, vartol=None, objtol=None, fval=None, parallel=True, verbose=False):
+def solve(n, data, resolvents, W, L, itrs=1001, gamma=0.5, vartol=None, objtol=None, fval=None, parallel=False, verbose=False):
     '''Solve the problem with a given W and L matrix
     Inputs:
     n is the number of nodes

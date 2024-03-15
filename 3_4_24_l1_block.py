@@ -9,6 +9,9 @@ class resolvent:
         self.shape = data.shape
 
     def __call__(self, x):
+        return sum(abs(x - self.data))
+
+    def prox(self, x):
         u = x - self.data
         r = max(abs(u)-1, 0)*np.sign(u) + self.data
         #print(f"Data: {self.data}, x: {x}, u: {u}, r: {r}", flush=True)
@@ -38,43 +41,23 @@ class fullValueNorm:
 
     def __repr__(self):
         return "Full value norm"
-class demo_resolvent:
-    '''Demo Resolvent function'''
-    def __init__(self, data):
-        self.data = data
-        self.shape = data.shape
-        # Define the problem using CVXPY
-        self.x = cp.Variable(data.shape) # variable
-        self.y = cp.Parameter(data.shape) # resolvent parameter
-        # self.f would be the function to minimize
-        self.f = cp.huber(self.x - self.data, 1)
-        self.obj = cp.Minimize(self.f + cp.sum_squares(self.x - self.y))
-        self.prob = cp.Problem(self.obj)
-
-    def __call__(self, x):
-        self.y.value = x
-        self.prob.solve()
-        return self.x.value
-
-    def __repr__(self):
-        return "Demo resolvent"
-        
+      
 if __name__ == "__main__":
     # Test L1 resolvent
     n = 10
     ldata = [np.array(i) for i in range(n)]
     ldata.append(ldata.copy())
     #fVal = fullValueNorm(ldata)
-    Lf = np.array([[ 1.208, -0.309, -0.309, -0.309, -0.281, -0.   , -0.   , -0.   , -0.   , -0.   ],
-       [-0.309,  1.208, -0.309, -0.309, -0.281, -0.   , -0.   , -0.   , -0.   , -0.   ],
-       [-0.309, -0.309,  1.208, -0.309, -0.281, -0.   , -0.   , -0.   , -0.   , -0.   ],
-       [-0.309, -0.309, -0.309,  1.208, -0.281, -0.   , -0.   , -0.   , -0.   , -0.   ],
-       [-0.281, -0.281, -0.281, -0.281,  2.   , -0.877, -0.   , -0.   , -0.   , -0.   ],
-       [-0.   , -0.   , -0.   , -0.   , -0.877,  2.   , -0.281, -0.281, -0.281, -0.281],
-       [-0.   , -0.   , -0.   , -0.   , -0.   , -0.281,  1.208, -0.309, -0.309, -0.309],
-       [-0.   , -0.   , -0.   , -0.   , -0.   , -0.281, -0.309,  1.208, -0.309, -0.309],
-       [-0.   , -0.   , -0.   , -0.   , -0.   , -0.281, -0.309, -0.309,  1.208, -0.309],
-       [-0.   , -0.   , -0.   , -0.   , -0.   , -0.281, -0.309, -0.309, -0.309,  1.208]])
+    Lf = np.array([[-0.   , -0.   , -0.   , -0.   , -0.   , -0.   , -0.   , -0.   , -0.   , -0.   ],
+       [ 0.573, -0.   , -0.   , -0.   , -0.   , -0.   , -0.   , -0.   , -0.   , -0.   ],
+       [ 0.573,  0.573, -0.   , -0.   , -0.   , -0.   , -0.   , -0.   , -0.   , -0.   ],
+       [ 0.573,  0.573,  0.573, -0.   , -0.   , -0.   , -0.   , -0.   , -0.   , -0.   ],
+       [ 0.281,  0.281,  0.281,  0.281, -0.   , -0.   , -0.   , -0.   , -0.   , -0.   ],
+       [-0.   , -0.   , -0.   , -0.   ,  0.877, -0.   , -0.   , -0.   , -0.   , -0.   ],
+       [ 0.   ,  0.   ,  0.   ,  0.   , -0.   ,  0.281, -0.   , -0.   , -0.   , -0.   ],
+       [ 0.   ,  0.   ,  0.   ,  0.   , -0.   ,  0.281,  0.573, -0.   , -0.   , -0.   ],
+       [ 0.   ,  0.   ,  0.   ,  0.   , -0.   ,  0.281,  0.573,  0.573, -0.   , -0.   ],
+       [ 0.   ,  0.   ,  0.   ,  0.   , -0.   ,  0.281,  0.573,  0.573,  0.573, -0.   ]])
     Wf = np.array([[ 1.208, -0.309, -0.309, -0.309, -0.281, -0.   , -0.   , -0.   , -0.   , -0.   ],
        [-0.309,  1.208, -0.309, -0.309, -0.281, -0.   , -0.   , -0.   , -0.   , -0.   ],
        [-0.309, -0.309,  1.208, -0.309, -0.281, -0.   , -0.   , -0.   , -0.   , -0.   ],
@@ -110,13 +93,15 @@ if __name__ == "__main__":
     pairs = [(Wf, Lf), (W_pen, L_pen), (Wmt, Lmt), (Wmax, Lmax)]
     pair_names = ["Wf, Lf", "W_pen, L_pen", "Wmt, Lmt", "Wmax, Lmax"]
     i = 0
-    for W, L in pairs:        
+    for W, L in pairs:                
         lres = [resolvent]*n
         print(f"Pair: {pair_names[i]}")
         i += 1
-        lx, lresults = oars.solve(n, ldata, lres, W, L, itrs=1000, objtol=1e-5, fval=fullValue, parallel=False, verbose=True)
+        #lx, lresults = oars.solve(n, ldata, lres, W, L, itrs=1000, objtol=1e-5, fval=fullValue, parallel=False, verbose=True)
+        #Vartol 1e-5
+        lx, lresults = oars.solve(n, ldata, lres, W, L, itrs=1000, vartol=1e-5, parallel=False, verbose=True)
         print("lx", lx)
-        print("lresults", lresults)
+        #print("lresults", lresults)
 
     # Test demo resolvent
     # n = 4

@@ -8,16 +8,10 @@ class resolvent:
         self.data = data
         self.shape = data.shape
 
-    # Evaluates L1 norm
     def __call__(self, x):
         u = x - self.data
-        return sum(abs(u))
-
-    # Evaluates L1 norm resolvent
-    def prox(self, x):
-        u = x - self.data
         r = max(abs(u)-1, 0)*np.sign(u) + self.data
-        print(f"Data: {self.data}, x: {x}, u: {u}, r: {r}", flush=True)
+        #print(f"Data: {self.data}, x: {x}, u: {u}, r: {r}", flush=True)
         return r
 
     def __repr__(self):
@@ -30,7 +24,20 @@ def fullValue(data, x):
         v += np.abs(x - d)
     return v
 
+class fullValueNorm:
+    '''Full value norm'''
+    def __init__(self, data):
+        self.data = data
+        
 
+    def __call__(self, x):
+        v = 0
+        for d in self.data:
+            v += np.abs(x - d)
+        return v
+
+    def __repr__(self):
+        return "Full value norm"
 class demo_resolvent:
     '''Demo Resolvent function'''
     def __init__(self, data):
@@ -41,13 +48,10 @@ class demo_resolvent:
         self.y = cp.Parameter(data.shape) # resolvent parameter
         # self.f would be the function to minimize
         self.f = cp.huber(self.x - self.data, 1)
-        self.obj = cp.Minimize(self.f + 0.5*cp.sum_squares(self.x - self.y))
+        self.obj = cp.Minimize(self.f + cp.sum_squares(self.x - self.y))
         self.prob = cp.Problem(self.obj)
 
     def __call__(self, x):
-        return self.f(x)
-
-    def prox(self, x):
         self.y.value = x
         self.prob.solve()
         return self.x.value
@@ -57,20 +61,25 @@ class demo_resolvent:
         
 if __name__ == "__main__":
     # Test L1 resolvent
-    n = 4
-    #ldata = [np.array(i) for i in range(n)]
-    ldata = [np.array(i) for i in [1, 2, 3, 40]]
+    n = 5
+    ldata = [np.array(i) for i in range(n)]
     ldata.append(ldata.copy())
-    lres = [resolvent]*n
     #fVal = fullValueNorm(ldata)
-    lx, lresults = oars.solveMT(n, ldata, lres, itrs=11, objtol=1e-5, fval=fullValue, parallel=False, verbose=True)
-    print("lx", lx)
-    print("lresults", lresults)
+    i = 0
+    for W, L in pairs:                
+        lres = [resolvent]*n
+        print(f"Pair: {pair_names[i]}")
+        i += 1
+        #lx, lresults = oars.solve(n, ldata, lres, W, L, itrs=1000, objtol=1e-5, fval=fullValue, parallel=False, verbose=True)
+        #Vartol 1e-5
+        lx, lresults = oars.solve(n, ldata, lres, W, L, itrs=1000, vartol=1e-5, parallel=False, verbose=True)
+        print("lx", lx)
+        #print("lresults", lresults)
 
     # Test demo resolvent
     # n = 4
-    
-    dres = [demo_resolvent]*n
-    dx, dresults = oars.solveMT(n, ldata, dres, itrs=50, vartol=1e-2, verbose=True)
-    print("dx", dx)
-    print("dresults", dresults)
+    # ddata = np.array([1, 2, 3, 40])
+    # dres = [demo_resolvent]*n
+    # dx, dresults = oars.solveMT(n, ddata, dres, itrs=50, vartol=1e-2, verbose=True)
+    # print("dx", dx)
+    # print("dresults", dresults)
