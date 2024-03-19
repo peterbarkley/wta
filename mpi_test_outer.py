@@ -48,54 +48,61 @@ class fullValueNorm:
 comm = MPI.COMM_WORLD
 i = comm.Get_rank()
 n = comm.Get_size()
-itrs = 11
+itrs = 1000
 gamma = 0.5
+m = 1 # Dimension of the data
 if i == 0:
     ldata = [np.array(i) for i in range(n)]
     #ldata.append(ldata.copy())
     lres = [resolvent]*n
     #fVal = fullValueNorm(ldata)
-    L, W = oarsmpi.getMT(n)
+    L, W = oarsmpi.getMT(n-1)
     Comms_Data = oarsmpi.requiredComms(L, W)
     # Broadcast L and W
     print("Node 0 broadcasting L and W", flush=True)
     comm.Bcast(L, root=0)
     comm.Bcast(W, root=0)
     # Distribute the data
-    for j in range(1, n):
+    for j in range(1, n-1):
         data = ldata[j]
-        comm.Send(data, dest=j, tag=44)
-        comm.send(lres[j], dest=j, tag=17)
-        comm.send(Comms_Data[j], dest=j, tag=33)
+        comm.Send(data, dest=j, tag=44) # Data
+        comm.send(lres[j], dest=j, tag=17) # Resolvent
+        comm.send(Comms_Data[j], dest=j, tag=33) # Comms data
     # Run subproblems
     print("Node 0 running subproblem", flush=True)
     print("Comms data 0", Comms_Data[0], flush=True)
-    w = oarsmpi.subproblem(i, ldata[i], lres[i], W, L, Comms_Data[i], comm, gamma, itrs, verbose=True)
-    #w = np.array(i)
+    w = oarsmpi.subproblem(i, ldata[i], lres[i], W, L, Comms_Data[i], comm, gamma, itrs, vartol=1e-2, verbose=True)
+    #w = np.array(m)
     results = []
     results.append({'w':w})
     w_i = np.zeros(w.shape)
-    for k in range(1, n):
+    for k in range(1, n-1):
         comm.Recv(w_i, source=k, tag=0)
         results.append({'w':w_i})
         w += w_i
-    w = w/n
+    w = w/(n-1)
     print(w)
-else:
+elif i < n-1:
     # Receive L and W
-    print(f"Node {i} receiving L and W", flush=True)
-    L = np.zeros((n,n))
-    W = np.zeros((n,n))
+    #print(f"Node {i} receiving L and W", flush=True)
+    L = np.zeros((n-1,n-1))
+    W = np.zeros((n-1,n-1))
     comm.Bcast(L, root=0)
     comm.Bcast(W, root=0)
-    print(f"Node {i} received L and W", flush=True)
+    #print(f"Node {i} received L and W", flush=True)
     # Receive the data
-    data = np.array(0)
+    data = np.array(m)
     comm.Recv(data, source=0, tag=44)
     res = comm.recv(source=0, tag=17)
     comms = comm.recv(source=0, tag=33)
     # Run the subproblem
     print(f"Node {i} running subproblem", flush=True)
-    w = oarsmpi.subproblem(i, data, res, W, L, comms, comm, gamma, itrs, verbose=True)
+    w = oarsmpi.subproblem(i, data, res, W, L, comms, comm, gamma, itrs, vartol=1e-2, verbose=True)
     #w = np.array(i)
     comm.Send(w, dest=0, tag=0)
+else:
+    L = np.zeros((n-1,n-1))
+    W = np.zeros((n-1,n-1))
+    comm.Bcast(L, root=0)
+    comm.Bcast(W, root=0)
+    oarsmpi.evaluate(m, comm, vartol=1e-2, itrs=itrs) 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from mpi4py import MPI
 import numpy as np
-import oars
+#import oars
 
 def getMT(n):
     '''Get Malitsky-Tam values for W and L
@@ -70,7 +70,7 @@ def requiredComms(L, W):
     return Comms_Data
 
 #def solve(s, itrs=100, gamma=0.5, verbose=False, terminate=None):
-def subproblem(i, data, pb, W, L, comms_data, comm, gamma=0.5, itrs=100, verbose=False, terminate=None):
+def subproblem(i, data, pb, W, L, comms_data, comm, gamma=0.5, itrs=100, verbose=False, vartol=None, terminate=None):
     
     # comm = MPI.COMM_WORLD
     # i = comm.Get_rank()
@@ -87,9 +87,13 @@ def subproblem(i, data, pb, W, L, comms_data, comm, gamma=0.5, itrs=100, verbose
     local_v = np.zeros(s, dtype=np.float64)
     local_r = np.zeros(s, dtype=np.float64)
     v_temp = np.zeros(s, dtype=np.float64)
+    n = W.shape[0]
     itr = 0
+    terminated = False
     while itr < itrs:
-        # if terminate is not None and terminate.value != 0:
+        if vartol is not None and comm.Iprobe(source=n, tag=0):
+            itrs = comm.recv(source=n, tag=0)
+            terminated = True
         #     if terminate.value < itr:
         #         terminate.value = itr + 1
         #     itrs = terminate.value
@@ -113,9 +117,10 @@ def subproblem(i, data, pb, W, L, comms_data, comm, gamma=0.5, itrs=100, verbose
         w_value = resolvent.prox(local_v + local_r)
 
         # Terminate if needed
-        # if i==0 and terminate is not None:
-        #     comm.send(w_value, dest=n, tag=itr)
-            #queue['terminate'].put(w_value)
+        if not terminated and i==0 and vartol is not None:
+             #print(f'Node {i} w_value sending for eval: {w_value}', flush=True)
+             comm.Send(w_value, dest=n, tag=itr)
+
             
 
         # Put data in downstream queues
@@ -151,5 +156,37 @@ def subproblem(i, data, pb, W, L, comms_data, comm, gamma=0.5, itrs=100, verbose
         local_r.fill(0)
         itr += 1
 
-    print(f'Node {i} w_value: {w_value}', flush=True)
+    #print(f'Node {i} w_value: {w_value}', flush=True)
     return w_value
+
+def evaluate(s, comm, vartol=1e-7, itrs=100):
+    """Evaluate the convergence of the algorithm
+    s: the shape of the data
+    comm: the MPI communicator
+    itrs: the number of iterations to run
+    
+    """
+    last = np.zeros(s, dtype=np.float64)
+    buffer = np.zeros(s, dtype=np.float64)
+    counter = 0
+    itr = 0
+    while counter < comm.Get_size() - 1 and counter < itrs and itr < itrs:
+        comm.Recv(buffer, source=0, tag=itr)
+        w = buffer.copy()
+        # Print last and buffer
+        #print(f'Counter: {counter}, Last: {last}, Buffer: {w}', flush=True)
+        if np.linalg.norm(w - last) < vartol:
+            counter += 1
+        else:
+            counter = 0
+        last = w
+        itr += 1
+    # print counter, last and buff
+    #print(f'Counter: {counter}, Last: {last}, Buffer: {w}', flush=True)
+    print(f'Reached termination criteria on Iteration {itr}', flush=True)
+
+    # Terminate the other processes
+    terminate_itr = itr + 50 # comm.Get_size()
+    for i in range(comm.Get_size()-1):
+        #print(f'Sending termination criteria {terminate_itr} to {i}', flush=True)
+        comm.send(terminate_itr, dest=i, tag=0)
