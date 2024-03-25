@@ -126,7 +126,7 @@ def subproblem(i, data, problem_builder, W, L, comms_data, comm, gamma=0.5, itrs
             v_temp += W[i,k]*buffer
 
         # Solve the problem
-        w_value = resolvent(local_v + local_r)
+        w_value = resolvent.prox(local_v + local_r)
 
         # Terminate if needed
         if i==0 and terminate is not None:

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from mpi4py import MPI
 import numpy as np
+#import cvxpy as cp
 #import oars
 
 def getMT(n):
@@ -22,6 +23,73 @@ def getMT(n):
         L[i+1,i] = 1
     L[n-1,0] = 1
     return L, W
+
+
+def getMaxConnect(n):
+    '''
+    Return W, L for maximum connectivity
+    '''
+    v = 2/(n-1)
+    W = -v*np.ones((n,n))
+    # Set diagonal of W to 2
+    for i in range(n):
+        W[i,i] = 2
+    
+    L = np.zeros((n,n))
+    # Set lower triangle of L to v
+    for i in range(n):
+        for j in range(i):
+            L[i,j] = v
+
+    return L, W
+
+
+# def wta(q, V, W, integer=True, lasso=False, verbose=False, **kwargs):
+#     """
+#     Solve the weapon-target assignment problem.
+#     Inputs:
+#         q: (n,m) array of survival probabilities
+#         V: (n,) array of target values
+#         W: (m,) array of weapon counts
+#         integer: boolean, whether to solve the integer or continuous problem
+#         lasso: boolean, whether to solve the lasso problem
+#     Outputs:
+#         probval: optimal value of the problem
+#         x: (n,m) array of weapon assignments
+#     """
+#     if len(q.shape) == 1:
+#         n = q.shape[0]
+#         m = 1
+#         q = q.reshape((n,m))
+#     else:
+#         n, m = q.shape
+
+#     # Define the CVXPY problem.
+#     if integer:
+#         x = cp.Variable((n,m), integer=True)
+#     else:
+#         x = cp.Variable((n,m))
+#     weighted_weapons = cp.multiply(x, np.log(q)) # (n,m)
+#     survival_probs = cp.exp(cp.sum(weighted_weapons, axis=1)) # (n,)
+    
+#     if lasso:
+#         v = 0.1*min(V)
+#         obj_fun = V@survival_probs + v*cp.sum(x)
+#     else:
+#         obj_fun = V@survival_probs
+#     objective = cp.Minimize(obj_fun)
+#     cons = [cp.sum(x, axis=0) <= W, x >= 0]
+
+#     # Solve
+#     prob = cp.Problem(objective, cons)
+#     prob.solve(**kwargs)
+#     print(prob.status) # Optimal
+#     if verbose and prob.status == 'Optimal':
+#         print("The optimal value is", prob.value)
+#         print("A solution x is")
+#         print(x.value)
+
+#     return prob.value, x.value
 
 
 def requiredComms(L, W):
@@ -157,7 +225,8 @@ def subproblem(i, data, pb, W, L, comms_data, comm, gamma=0.5, itrs=100, verbose
         itr += 1
 
     #print(f'Node {i} w_value: {w_value}', flush=True)
-    return w_value
+    # return w_value and log if it is in the resolvent
+    return w_value, resolvent.log
 
 def evaluate(s, comm, vartol=1e-7, itrs=100):
     """Evaluate the convergence of the algorithm
@@ -187,6 +256,7 @@ def evaluate(s, comm, vartol=1e-7, itrs=100):
 
     # Terminate the other processes
     terminate_itr = itr + 50 # comm.Get_size()
-    for i in range(comm.Get_size()-1):
-        #print(f'Sending termination criteria {terminate_itr} to {i}', flush=True)
-        comm.send(terminate_itr, dest=i, tag=0)
+    if itr < itrs - 50:
+        for i in range(comm.Get_size()-1):
+            #print(f'Sending termination criteria {terminate_itr} to {i}', flush=True)
+            comm.send(terminate_itr, dest=i, tag=0)

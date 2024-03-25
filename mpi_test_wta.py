@@ -3,7 +3,7 @@ import mpi_test as oarsmpi
 import numpy as np
 from mpi4py import MPI
 from scipy.special import lambertw
-
+import json
 from time import time
 np.set_printoptions(precision=3, suppress=True, linewidth=200)
 
@@ -26,7 +26,7 @@ def generate_random_problem(n=5, m=3):
         m: number of weapon types
     """
     np.random.seed(1)
-    q = np.random.rand(n,m)*.8 + .1 # Survival probability
+    q = np.random.rand(n,m)*.5 + .5 # Survival probability
     V = np.random.rand(n)*100 # Value of each target
     #W = np.random.randint(1,10,m) # Number of weapons of each type
     W = np.ones(m)
@@ -173,82 +173,104 @@ def proj_full(x):
 
 
 # Test WTA resolvent
-comm = MPI.COMM_WORLD
-i = comm.Get_rank()
-n = comm.Get_size()
-itrs = 1000
-gamma = 0.5
-tgts = n-2 # Save one node for proj and one for convergence testing
-wpns = tgts + 2
-m = (tgts, wpns) # Dimension of the data
-if i == 0:
-    node_tgts = list(range(tgts))
-    v0 = 1/tgts*np.ones((tgts, wpns))
-    # Generate the data
-    Q, V, WW = generate_random_problem(tgts, wpns)
-    data = smallSplit(Q, V, WW, tgts, tgts, wpns, node_tgts, 1)
-    
-    proj_data = {'QQ':Q, 'VV':V, 'WW':WW, 's':range(wpns), 'Q':Q, 'V':V, 'v0':v0}
-    fulldata = []
-    for j in range(tgts):
-        fulldata.append(data[j])
-    fulldata.append(proj_data)
-    fulldata.append({'Q':Q, 'V':V, 'WW':WW}) # For testing convergence
-    
-    resolvents = []
-    for _ in range(tgts):
-        resolvents.append(wtaResolvent)
-    resolvents.append(simplexProj)
-    #W, L = oars.getMaxConnect(n)
-    #ldata.append(ldata.copy())
-    #fVal = fullValueNorm(ldata)
-    L, W = oarsmpi.getMT(n-1)
-    Comms_Data = oarsmpi.requiredComms(L, W)
-    # Broadcast L and W
-    print("Node 0 broadcasting L and W", flush=True)
-    comm.Bcast(L, root=0)
-    comm.Bcast(W, root=0)
-    # Distribute the data
-    for j in range(1, n-1):
-        data = fulldata[j]
-        comm.send(data, dest=j, tag=44) # Data
-        comm.send(resolvents[j], dest=j, tag=17) # Resolvent
-        comm.send(Comms_Data[j], dest=j, tag=33) # Comms data
-    # Run subproblems
-    print("Node 0 running subproblem", flush=True)
-    print("Comms data 0", Comms_Data[0], flush=True)
-    w = oarsmpi.subproblem(i, fulldata[i], resolvents[i], W, L, Comms_Data[i], comm, gamma, itrs, vartol=1e-2, verbose=True)
-    #w = np.array(m)
-    results = []
-    results.append({'w':w})
-    w_i = np.zeros(w.shape)
-    for k in range(1, n-1):
-        comm.Recv(w_i, source=k, tag=0)
-        results.append({'w':w_i})
-        w += w_i
-    w = w/(n-1)
-    print(w)
-elif i < n-1:
-    # Receive L and W
-    #print(f"Node {i} receiving L and W", flush=True)
-    L = np.zeros((n-1,n-1))
-    W = np.zeros((n-1,n-1))
-    comm.Bcast(L, root=0)
-    comm.Bcast(W, root=0)
-    #print(f"Node {i} received L and W", flush=True)
-    # Receive the data
-    #data = np.array(m)
-    data = comm.recv(source=0, tag=44)
-    res = comm.recv(source=0, tag=17)
-    comms = comm.recv(source=0, tag=33)
-    # Run the subproblem
-    print(f"Node {i} running subproblem", flush=True)
-    w = oarsmpi.subproblem(i, data, res, W, L, comms, comm, gamma, itrs, vartol=1e-2, verbose=True)
-    #w = np.array(i)
-    comm.Send(w, dest=0, tag=0)
-else:
-    L = np.zeros((n-1,n-1))
-    W = np.zeros((n-1,n-1))
-    comm.Bcast(L, root=0)
-    comm.Bcast(W, root=0)
-    oarsmpi.evaluate(m, comm, vartol=1e-2, itrs=itrs) 
+def test_wta(L, W, itrs=1000, gamma=0.5, title="WTA"):
+    nodes = L.shape[0]
+    comm = MPI.COMM_WORLD
+    i = comm.Get_rank()
+    n = comm.Get_size()
+    if n > nodes - 2:
+        print("Not enough nodes for the given problem")
+        return
+    tgts = nodes-1 # Save one node for proj and one for convergence testing
+    wpns = tgts + 40
+    m = (tgts, wpns) # Dimension of the data
+    if i == 0:
+        node_tgts = list(range(tgts))
+        v0 = 1/tgts*np.ones((tgts, wpns))
+        # Generate the data
+        Q, V, WW = generate_random_problem(tgts, wpns)
+        data = smallSplit(Q, V, WW, tgts, tgts, wpns, node_tgts, 1)
+        
+        proj_data = {'QQ':Q, 'VV':V, 'WW':WW, 's':range(wpns), 'Q':Q, 'V':V, 'v0':v0}
+        fulldata = []
+        for j in range(tgts):
+            fulldata.append(data[j])
+        fulldata.append(proj_data)
+        fulldata.append({'Q':Q, 'V':V, 'WW':WW}) # For testing convergence
+        
+        resolvents = []
+        for _ in range(tgts):
+            resolvents.append(wtaResolvent)
+        resolvents.append(simplexProj)
+        #W, L = oars.getMaxConnect(n)
+        #ldata.append(ldata.copy())
+        #fVal = fullValueNorm(ldata)
+        #L, W = oarsmpi.getMT(n-1)
+        Comms_Data = oarsmpi.requiredComms(L, W)
+        # Broadcast L and W
+        # print("Node 0 broadcasting L and W", flush=True)
+        # comm.Bcast(L, root=0)
+        # comm.Bcast(W, root=0)
+        # Distribute the data
+        for j in range(1, n-1):
+            data = fulldata[j]
+            comm.send(data, dest=j, tag=44) # Data
+            comm.send(resolvents[j], dest=j, tag=17) # Resolvent
+            comm.send(Comms_Data[j], dest=j, tag=33) # Comms data
+        # Run subproblems
+        print("Node 0 running subproblem", flush=True)
+        #print("Comms data 0", Comms_Data[0], flush=True)
+        w, log = oarsmpi.subproblem(i, fulldata[i], resolvents[i], W, L, Comms_Data[i], comm, gamma, itrs, vartol=1e-2, verbose=True)
+
+        
+        #timestamp = time()
+        with open('logs_wta'+str(i)+'_'+title+'.json', 'w') as f:
+            json.dump(log, f)
+        #w = np.array(m)
+        results = []
+        results.append({'w':w})
+        w_i = np.zeros(w.shape)
+        for k in range(1, n-1):
+            comm.Recv(w_i, source=k, tag=0)
+            results.append({'w':w_i})
+            w += w_i
+        w = w/(n-1)
+        print(w)
+        print(fullValue(fulldata[-1], w))
+        t = time()
+        true_p, true_x = oarsmpi.wta(Q, V, WW, integer=False, verbose=True, mosek_params={'MSK_DPAR_OPTIMIZER_MAX_TIME': 30.0,})
+        true_time = time() - t
+        print("true time", true_time)
+        print("true x", true_x)
+    elif i < n-1:
+        # Receive L and W
+        #print(f"Node {i} receiving L and W", flush=True)
+        L = np.zeros((n-1,n-1))
+        W = np.zeros((n-1,n-1))
+        comm.Bcast(L, root=0)
+        comm.Bcast(W, root=0)
+        #print(f"Node {i} received L and W", flush=True)
+        # Receive the data
+        #data = np.array(m)
+        data = comm.recv(source=0, tag=44)
+        res = comm.recv(source=0, tag=17)
+        comms = comm.recv(source=0, tag=33)
+        # Run the subproblem
+        print(f"Node {i} running subproblem", flush=True)
+        w, log = oarsmpi.subproblem(i, data, res, W, L, comms, comm, gamma, itrs, vartol=1e-2, verbose=True)
+        timestamp = time()
+        with open('logs_wta'+str(i)+'_'+str(timestamp)+'.json', 'w') as f:
+            json.dump(log, f)
+        #w = np.array(i)
+        comm.Send(w, dest=0, tag=0)
+    else:
+        L = np.zeros((n-1,n-1))
+        W = np.zeros((n-1,n-1))
+        comm.Bcast(L, root=0)
+        comm.Bcast(W, root=0)
+        oarsmpi.evaluate(m, comm, vartol=1e-5, itrs=itrs) 
+
+n = 10
+LW_titles = ['full', 'MT', 'block2']
+Lfull, Wfull = oarsmpi.getMT(n)
+Lmt, Wmt = oarsmpi.getMT(n)
