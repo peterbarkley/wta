@@ -190,15 +190,15 @@ def test_wta(L, W, itrs=1000, gamma=0.5, title="WTA"):
         
         proj_data = {'QQ':Q, 'VV':V, 'WW':WW, 's':range(wpns), 'Q':Q, 'V':V, 'v0':v0}
         fulldata = []
+        fulldata.append(proj_data)
         for j in range(tgts):
             fulldata.append(data[j])
-        fulldata.append(proj_data)
         fulldata.append({'Q':Q, 'V':V, 'WW':WW}) # For testing convergence
         
         resolvents = []
+        resolvents.append(simplexProj)
         for _ in range(tgts):
             resolvents.append(wtaResolvent)
-        resolvents.append(simplexProj)
         Comms_Data = oarsmpi.requiredComms(L, W)
         #print(len(resolvents), flush=True)
         # Distribute the data
@@ -234,6 +234,15 @@ def test_wta(L, W, itrs=1000, gamma=0.5, title="WTA"):
         true_time = time() - t
         print("true val", true_p)
     elif i < n-1:
+        # Receive L and W
+        #print(f"Node {i} receiving L and W", flush=True)
+        #L = np.zeros((n-1,n-1))
+        #W = np.zeros((n-1,n-1))
+        #comm.Bcast(L, root=0)
+        #comm.Bcast(W, root=0)
+        #print(f"Node {i} received L and W", flush=True)
+        # Receive the data
+        #data = np.array(m)
         data = comm.recv(source=0, tag=44)
         res = comm.recv(source=0, tag=17)
         comms = comm.recv(source=0, tag=33)
