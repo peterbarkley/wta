@@ -35,14 +35,19 @@ def generate_random_problem(n=5, m=3):
 # From https://gist.github.com/mblondel/6f3b7aaad90606b98f71
 def projection_simplex_sort(v, z=1):
     n_features = v.shape[0]
-    u = np.sort(v)[::-1]
+    u = sorted(v, reverse=True)
     cssv = np.cumsum(u) - z
     ind = np.arange(n_features) + 1
     cond = u - cssv / ind > 0
     rho = ind[cond][-1]
     theta = cssv[cond][-1] / float(rho)
-    w = np.maximum(v - theta, 0)
-    return w
+    v = np.maximum(v - theta, 0)
+    return 0
+
+def simplex_proj(y):
+    for i in range(y.shape[1]):
+        projection_simplex_sort(y[:,i])
+    return y
 
 def lambertw_prox(q, bv, y, v=1, verbose=False):
 
@@ -110,8 +115,9 @@ class simplexProj:
     def prox(self, y):
         log = {}
         log['start'] = time()
-        for i in self.s:
-            y[:,i] = projection_simplex_sort(y[:,i])
+        y = simplex_proj(y)
+        # for i in self.s:
+        #     y[:,i] = projection_simplex_sort(y[:,i])
         
         
         log['end'] = time()

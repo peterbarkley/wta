@@ -140,7 +140,7 @@ def smallSplit(n, tgts, wpns, node_tgts, num_nodes_per_tgt, L=None):
     i: node index'''
     if L is None:
         L = np.zeros((n,n))
-    Q, V, WW = wta.generate_random_problem(tgts, wpns)
+    Q, V, WW = generate_random_problem(tgts, wpns)
     WW = np.ones(wpns)
     m = (tgts, wpns)
     data = []
@@ -154,6 +154,21 @@ def smallSplit(n, tgts, wpns, node_tgts, num_nodes_per_tgt, L=None):
 
     #data.append({'Q':Q, 'V':V, 'WW':WW}) # Add the data for the full problem
     return data
+
+def generate_random_problem(n=5, m=3):
+    """
+    Generate a random problem.
+    Inputs:
+        n: number of targets
+        m: number of weapon types
+    """
+    np.random.seed(1)
+    q = np.random.rand(n,m)*.5 + .5 # Survival probability
+    V = np.random.rand(n)*100 # Value of each target
+    #W = np.random.randint(1,10,m) # Number of weapons of each type
+    W = np.ones(m)
+    return q, V, W
+
 
 def proj_full(x):
     proj_alg_x = x.copy()
@@ -184,11 +199,11 @@ if __name__ == "__main__":
     # Problem data
     n = 7
     tgts = 6
-    wpns = 8
+    wpns = 46
     itrs = 3000
 
     # Survival probabilities
-    Q, V, WW = wta.generate_random_problem(tgts, wpns)
+    Q, V, WW = generate_random_problem(tgts, wpns)
     WW = np.ones(wpns)
     # Reference values
     t = time()

@@ -167,12 +167,12 @@ def smallSplit(Q, V, W, n, tgts, wpns, node_tgts, num_nodes_per_tgt, L=None):
     #data.append({'Q':Q, 'V':V, 'WW':WW}) # Add the data for the full problem
     return data
 
-def proj_full(x):
-    proj_alg_x = x.copy()
-    for i in range(x.shape[1]):
-        proj_alg_x[:,i] = projection_simplex_sort(proj_alg_x[:,i])
+# def proj_full(x):
+#     proj_alg_x = x.copy()
+#     for i in range(x.shape[1]):
+#         proj_alg_x[:,i] = projection_simplex_sort(proj_alg_x[:,i])
 
-    return proj_alg_x
+#     return proj_alg_x
 
 
 # Test WTA resolvent
@@ -190,15 +190,15 @@ def test_wta(L, W, itrs=1000, gamma=0.5, title="WTA"):
         
         proj_data = {'QQ':Q, 'VV':V, 'WW':WW, 's':range(wpns), 'Q':Q, 'V':V, 'v0':v0}
         fulldata = []
-        fulldata.append(proj_data)
         for j in range(tgts):
             fulldata.append(data[j])
+        fulldata.append(proj_data)
         fulldata.append({'Q':Q, 'V':V, 'WW':WW}) # For testing convergence
         
         resolvents = []
-        resolvents.append(simplexProj)
         for _ in range(tgts):
             resolvents.append(wtaResolvent)
+        resolvents.append(simplexProj)
         Comms_Data = oarsmpi.requiredComms(L, W)
         #print(len(resolvents), flush=True)
         # Distribute the data
