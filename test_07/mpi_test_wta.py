@@ -265,10 +265,10 @@ def test_wta(L, W, itrs=1000, gamma=0.5, title="WTA"):
 comm = MPI.COMM_WORLD
 i = comm.Get_rank()
 n = comm.Get_size()
-nodes = 16
-if n - 1 < nodes:
-    print("Not enough nodes for the given problem")
-    exit()
+nodes = n-1
+# if n - 1 < nodes:
+#     print("Not enough nodes for the given problem")
+#     exit()
 
 LW_titles = ['full', 'MT', 'block2', 'SLEM', 'Ryu']
 Lfull, Wfull = oarsmpi.getMaxConnect(nodes)
