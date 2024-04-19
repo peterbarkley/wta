@@ -214,10 +214,11 @@ def test_wta(L, W, itrs=1000, gamma=0.5, title="WTA"):
         proj_w = w_i
         #print(w, proj_w, flush=True)
         print("alg val", fullValue(fulldata[-1], proj_w))
-        #t = time()
+        t = time()
         true_p, true_x = oarsmpi.wta(Q.T, V, WW, integer=False, verbose=True, mosek_params={'MSK_DPAR_OPTIMIZER_MAX_TIME': 30.0,})
-        #true_time = time() - t
+        true_time = time() - t
         print("true val", true_p)
+        print("mosek time", true_time)
     elif i < n-1:
         # Receive L and W
         #print(f"Node {i} receiving L and W", flush=True)

@@ -80,7 +80,7 @@ class wtaResolvent:
         x[self.data['s'],:] = w
         log['end'] = time()
         log['time'] = log['end'] - log['start']
-        log['value'] = fullValue(self.data, proj_full(x))
+        #log['value'] = fullValue(self.data, proj_full(x))
         self.log.append(log)
         return x
 
@@ -175,12 +175,6 @@ def proj_full(x):
 # Test WTA resolvent
 def test_wta(L, W, itrs=1000, gamma=0.5, title="WTA"):
     nodes = L.shape[0]
-    comm = MPI.COMM_WORLD
-    i = comm.Get_rank()
-    n = comm.Get_size()
-    if n > nodes - 2:
-        print("Not enough nodes for the given problem")
-        return
     tgts = nodes-1 # Save one node for proj and one for convergence testing
     wpns = tgts + 40
     m = (tgts, wpns) # Dimension of the data
@@ -220,8 +214,9 @@ def test_wta(L, W, itrs=1000, gamma=0.5, title="WTA"):
         # Run subproblems
         print("Node 0 running subproblem", flush=True)
         #print("Comms data 0", Comms_Data[0], flush=True)
+        t = time()
         w, log = oarsmpi.subproblem(i, fulldata[i], resolvents[i], W, L, Comms_Data[i], comm, gamma, itrs, vartol=1e-2, verbose=True)
-
+        print("Time", time() - t)
         
         #timestamp = time()
         with open('logs_wta'+str(i)+'_'+title+'.json', 'w') as f:
@@ -235,20 +230,19 @@ def test_wta(L, W, itrs=1000, gamma=0.5, title="WTA"):
             results.append({'w':w_i})
             w += w_i
         w = w/(n-1)
-        print(w)
+        #print(w)
         print(fullValue(fulldata[-1], w))
         t = time()
         true_p, true_x = oarsmpi.wta(Q, V, WW, integer=False, verbose=True, mosek_params={'MSK_DPAR_OPTIMIZER_MAX_TIME': 30.0,})
         true_time = time() - t
-        print("true time", true_time)
-        print("true x", true_x)
+        print("true val", true_p)
     elif i < n-1:
         # Receive L and W
         #print(f"Node {i} receiving L and W", flush=True)
-        L = np.zeros((n-1,n-1))
-        W = np.zeros((n-1,n-1))
-        comm.Bcast(L, root=0)
-        comm.Bcast(W, root=0)
+        #L = np.zeros((n-1,n-1))
+        #W = np.zeros((n-1,n-1))
+        #comm.Bcast(L, root=0)
+        #comm.Bcast(W, root=0)
         #print(f"Node {i} received L and W", flush=True)
         # Receive the data
         #data = np.array(m)
@@ -256,21 +250,37 @@ def test_wta(L, W, itrs=1000, gamma=0.5, title="WTA"):
         res = comm.recv(source=0, tag=17)
         comms = comm.recv(source=0, tag=33)
         # Run the subproblem
-        print(f"Node {i} running subproblem", flush=True)
+        #print(f"Node {i} running subproblem", flush=True)
         w, log = oarsmpi.subproblem(i, data, res, W, L, comms, comm, gamma, itrs, vartol=1e-2, verbose=True)
-        timestamp = time()
-        with open('logs_wta'+str(i)+'_'+str(timestamp)+'.json', 'w') as f:
+        #timestamp = time()
+        with open('logs_wta'+str(i)+'_'+title+'.json', 'w') as f:
             json.dump(log, f)
         #w = np.array(i)
         comm.Send(w, dest=0, tag=0)
-    else:
-        L = np.zeros((n-1,n-1))
-        W = np.zeros((n-1,n-1))
-        comm.Bcast(L, root=0)
-        comm.Bcast(W, root=0)
+    elif i == n-1:
+        #L = np.zeros((n-1,n-1))
+        #W = np.zeros((n-1,n-1))
+        #comm.Bcast(L, root=0)
+        #comm.Bcast(W, root=0)
         oarsmpi.evaluate(m, comm, vartol=1e-5, itrs=itrs) 
 
-n = 10
+
+comm = MPI.COMM_WORLD
+i = comm.Get_rank()
+n = comm.Get_size()
+nodes = 10
+if n - 1 < nodes:
+    print("Not enough nodes for the given problem")
+    exit()
 LW_titles = ['full', 'MT', 'block2']
-Lfull, Wfull = oarsmpi.getMT(n)
-Lmt, Wmt = oarsmpi.getMT(n)
+Lfull, Wfull = oarsmpi.getMaxConnect(nodes)
+Lmt, Wmt = oarsmpi.getMT(nodes)
+m = 5
+L = np.zeros((nodes, nodes))
+L[m:, :m] = 0.4
+W = np.eye(nodes)*2 - L - L.T
+LW_list = [(Lfull, Wfull), (Lmt, Wmt), (L, W)]
+for j, (L, W) in enumerate(LW_list):
+    if i == 0:
+        print("Running WTA with L and W on"+LW_titles[j], flush=True)
+    test_wta(L, W, itrs=1000, gamma=0.5, title=LW_titles[j])

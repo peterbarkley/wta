@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from mpi4py import MPI
 import numpy as np
-#import cvxpy as cp
+import cvxpy as cp
 #import oars
 
 def getMT(n):
@@ -44,52 +44,52 @@ def getMaxConnect(n):
     return L, W
 
 
-# def wta(q, V, W, integer=True, lasso=False, verbose=False, **kwargs):
-#     """
-#     Solve the weapon-target assignment problem.
-#     Inputs:
-#         q: (n,m) array of survival probabilities
-#         V: (n,) array of target values
-#         W: (m,) array of weapon counts
-#         integer: boolean, whether to solve the integer or continuous problem
-#         lasso: boolean, whether to solve the lasso problem
-#     Outputs:
-#         probval: optimal value of the problem
-#         x: (n,m) array of weapon assignments
-#     """
-#     if len(q.shape) == 1:
-#         n = q.shape[0]
-#         m = 1
-#         q = q.reshape((n,m))
-#     else:
-#         n, m = q.shape
+def wta(q, V, W, integer=True, lasso=False, verbose=False, **kwargs):
+    """
+    Solve the weapon-target assignment problem.
+    Inputs:
+        q: (n,m) array of survival probabilities
+        V: (n,) array of target values
+        W: (m,) array of weapon counts
+        integer: boolean, whether to solve the integer or continuous problem
+        lasso: boolean, whether to solve the lasso problem
+    Outputs:
+        probval: optimal value of the problem
+        x: (n,m) array of weapon assignments
+    """
+    if len(q.shape) == 1:
+        n = q.shape[0]
+        m = 1
+        q = q.reshape((n,m))
+    else:
+        n, m = q.shape
 
-#     # Define the CVXPY problem.
-#     if integer:
-#         x = cp.Variable((n,m), integer=True)
-#     else:
-#         x = cp.Variable((n,m))
-#     weighted_weapons = cp.multiply(x, np.log(q)) # (n,m)
-#     survival_probs = cp.exp(cp.sum(weighted_weapons, axis=1)) # (n,)
+    # Define the CVXPY problem.
+    if integer:
+        x = cp.Variable((n,m), integer=True)
+    else:
+        x = cp.Variable((n,m))
+    weighted_weapons = cp.multiply(x, np.log(q)) # (n,m)
+    survival_probs = cp.exp(cp.sum(weighted_weapons, axis=1)) # (n,)
     
-#     if lasso:
-#         v = 0.1*min(V)
-#         obj_fun = V@survival_probs + v*cp.sum(x)
-#     else:
-#         obj_fun = V@survival_probs
-#     objective = cp.Minimize(obj_fun)
-#     cons = [cp.sum(x, axis=0) <= W, x >= 0]
+    if lasso:
+        v = 0.1*min(V)
+        obj_fun = V@survival_probs + v*cp.sum(x)
+    else:
+        obj_fun = V@survival_probs
+    objective = cp.Minimize(obj_fun)
+    cons = [cp.sum(x, axis=0) <= W, x >= 0]
 
-#     # Solve
-#     prob = cp.Problem(objective, cons)
-#     prob.solve(**kwargs)
-#     print(prob.status) # Optimal
-#     if verbose and prob.status == 'Optimal':
-#         print("The optimal value is", prob.value)
-#         print("A solution x is")
-#         print(x.value)
+    # Solve
+    prob = cp.Problem(objective, cons)
+    prob.solve(**kwargs)
+    print(prob.status) # Optimal
+    if verbose and prob.status == 'Optimal':
+        print("The optimal value is", prob.value)
+        print("A solution x is")
+        print(x.value)
 
-#     return prob.value, x.value
+    return prob.value, x.value
 
 
 def requiredComms(L, W):
@@ -165,7 +165,7 @@ def subproblem(i, data, pb, W, L, comms_data, comm, gamma=0.5, itrs=100, verbose
         #     if terminate.value < itr:
         #         terminate.value = itr + 1
         #     itrs = terminate.value
-        if verbose and itr % 10 == 0:
+        if verbose and itr % 400 == 0:
             print(f'Node {i} iteration {itr}', flush=True)
 
         # Get data from upstream L queue
